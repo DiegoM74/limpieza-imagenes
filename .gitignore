@@ -1,0 +1,18 @@
+# Caché de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Archivos de imagen temporales y resultados
+mascara.png
+limpia.jpg
+alineada.jpg
+
+# Carpetas y ejecutables de waifu2x (contienen binarios pesados y modelos)
+waifu2x-ncnn-vulkan-*/
+waifu2x-ncnn-vulkan.exe
+
+# Archivos de configuración de editores/IDE
+.vscode/
+.idea/
