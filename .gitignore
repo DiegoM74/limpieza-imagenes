@@ -5,9 +5,8 @@ __pycache__/
 *.pyd
 
 # Archivos de imagen temporales y resultados
-mascara.png
-limpia.jpg
-alineada.jpg
+*.png
+*.jpg
 
 # Carpetas y ejecutables de waifu2x (contienen binarios pesados y modelos)
 waifu2x-ncnn-vulkan-*/
