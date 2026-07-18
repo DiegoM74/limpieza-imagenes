@@ -9,7 +9,7 @@ SUBCOMANDOS:
 
 ──────────────────────────────────────────────────────────────────────────────
 REQUISITOS:
-  pip install opencv-contrib-python pillow scipy numpy
+  pip install opencv-contrib-python pillow numpy
 ──────────────────────────────────────────────────────────────────────────────
 """
 
@@ -29,10 +29,9 @@ except ImportError:
 
 try:
     from PIL import Image
-    from scipy.ndimage import gaussian_filter, binary_dilation
 except ImportError:
     print("[-] Faltan dependencias.")
-    print("   Instálalas con:  pip install pillow scipy numpy")
+    print("   Instálalas con:  pip install pillow numpy")
     sys.exit(1)
 
 
@@ -48,26 +47,42 @@ def get_valid_path(base_name):
 
 
 def find_waifu2x_executable():
-    """Busca el ejecutable waifu2x-ncnn-vulkan en directorios que comiencen con 'waifu2x'."""
-    if os.path.isfile("waifu2x-ncnn-vulkan.exe"):
-        return "waifu2x-ncnn-vulkan.exe"
+    """Busca el ejecutable waifu2x-ncnn-vulkan en el PATH o directorios locales."""
+    import shutil
 
-    try:
-        for entry in os.listdir("."):
-            if os.path.isdir(entry) and entry.lower().startswith("waifu2x"):
-                ruta_exe = os.path.join(entry, "waifu2x-ncnn-vulkan.exe")
-                if os.path.isfile(ruta_exe):
-                    return ruta_exe
-    except Exception:
-        pass
+    for name in ["waifu2x-ncnn-vulkan", "waifu2x-ncnn-vulkan.exe"]:
+        path = shutil.which(name)
+        if path:
+            return path
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    search_dirs = [".", script_dir]
+
+    for base_dir in search_dirs:
+        try:
+            for name in ["waifu2x-ncnn-vulkan.exe", "waifu2x-ncnn-vulkan"]:
+                full_path = os.path.join(base_dir, name)
+                if os.path.isfile(full_path):
+                    return full_path
+            for entry in os.listdir(base_dir):
+                entry_path = os.path.join(base_dir, entry)
+                if os.path.isdir(entry_path) and entry.lower().startswith("waifu2x"):
+                    for name in ["waifu2x-ncnn-vulkan.exe", "waifu2x-ncnn-vulkan"]:
+                        ruta_exe = os.path.join(entry_path, name)
+                        if os.path.isfile(ruta_exe):
+                            return ruta_exe
+        except Exception:
+            pass
 
     return None
 
 
 def ejecutar_waifu2x(executable_path, input_image_path):
     """Ejecuta waifu2x-ncnn-vulkan sobre la imagen de entrada y devuelve la ruta de la imagen procesada."""
+    import uuid
     temp_dir = tempfile.gettempdir()
-    output_path = os.path.join(temp_dir, "waifu2x_temp_out.png")
+    unique_id = uuid.uuid4().hex[:8]
+    output_path = os.path.join(temp_dir, f"waifu2x_temp_out_{unique_id}.png")
     
     exe_dir = os.path.dirname(os.path.abspath(executable_path))
     
@@ -98,8 +113,8 @@ def alinear_automatico(cover_bgr, limpia_bgr):
     """Calcula la homografía automáticamente usando SIFT."""
     print("[*] Detectando puntos de referencia automáticamente (SIFT)...")
 
-    gray_cover  = cv2.cvtColor(cover_bgr,  cv2.COLOR_BGR2GRAY)
-    gray_limpia = cv2.cvtColor(limpia_bgr, cv2.COLOR_BGR2GRAY)
+    gray_cover = cover_bgr if (len(cover_bgr.shape) == 2 or cover_bgr.shape[2] == 1) else cv2.cvtColor(cover_bgr, cv2.COLOR_BGR2GRAY)
+    gray_limpia = limpia_bgr if (len(limpia_bgr.shape) == 2 or limpia_bgr.shape[2] == 1) else cv2.cvtColor(limpia_bgr, cv2.COLOR_BGR2GRAY)
 
     try:
         detector = cv2.SIFT_create()
@@ -133,10 +148,15 @@ def alinear_automatico(cover_bgr, limpia_bgr):
     pts_cover  = np.float32([kp1[m.trainIdx].pt for m in buenos]).reshape(-1, 1, 2)
 
     H, mask = cv2.findHomography(pts_limpia, pts_cover, cv2.RANSAC, 5.0)
+
+    if H is None or mask is None:
+        print("[-] No se pudo calcular la homografía de alineación.")
+        sys.exit(1)
+
     inliers = int(mask.sum())
     print(f"   Inliers tras RANSAC: {inliers}")
 
-    if H is None or inliers < 4:
+    if inliers < 4:
         print("[-] No se pudo calcular la homografía de alineación.")
         sys.exit(1)
 
@@ -192,7 +212,7 @@ def match_color_reinhard(src, ref, mask=None):
         return np.array(ImageCms.applyTransform(pil, tf)).astype(float)
 
     def lab_to_rgb(lab_np):
-        pil  = Image.fromarray(lab_np.astype(np.uint8))
+        pil  = Image.fromarray(lab_np.astype(np.uint8), mode="LAB")
         srgb = ImageCms.createProfile("sRGB")
         lab  = ImageCms.createProfile("LAB")
         tf   = ImageCms.buildTransformFromOpenProfiles(lab, srgb, "LAB", "RGB")
@@ -269,20 +289,20 @@ def match_color_local(limpia_rgb, orig_rgb, mask_bool):
     print("  [+] Ajustando color local (solo dentro de la máscara)...")
 
     # Anillo de contexto: píxeles justo fuera de la máscara
-    struct = np.ones((41, 41), dtype=bool)  # 20px de dilación
-    mask_dilated = binary_dilation(mask_bool, structure=struct)
+    mask_uint8 = mask_bool.astype(np.uint8) * 255
+    kernel = np.ones((41, 41), dtype=np.uint8)  # 20px de dilación
+    dilated_uint8 = cv2.dilate(mask_uint8, kernel)
+    mask_dilated = dilated_uint8 > 0
     context_ring = mask_dilated & ~mask_bool
 
     if context_ring.sum() < 50:
-        print("  [!] Anillo de contexto muy pequeño; se usa máscara completa como referencia.")
-        context_ring = ~mask_bool
+        print("  [!] Anillo de contexto muy pequeño; se usa la imagen completa como referencia.")
+        context_ring = np.ones_like(mask_bool, dtype=bool)
 
-    # Delta medio por canal en el anillo de contexto
     deltas = []
     for c in range(3):
         orig_vals   = orig_rgb[:, :, c][context_ring].astype(float)
         limpia_vals = limpia_rgb[:, :, c][context_ring].astype(float)
-        # Escala + offset para que en el contexto coincidan
         s_mean, s_std = limpia_vals.mean(), limpia_vals.std() + 1e-6
         r_mean, r_std = orig_vals.mean(),   orig_vals.std()   + 1e-6
         deltas.append((s_mean, s_std, r_mean, r_std))
@@ -292,14 +312,11 @@ def match_color_local(limpia_rgb, orig_rgb, mask_bool):
         canal = ["R", "G", "B"][i]
         print(f"    Canal {canal}: media {sm:.1f}→{rm:.1f}  std {ss:.1f}→{rs:.1f}")
 
-    # Aplica la corrección stats al canal, pero solo dentro de la máscara
-    # Fuera de la máscara deja los píxeles originales de limpia intactos
     corrected = limpia_rgb.astype(float).copy()
     for c in range(3):
         sm, ss, rm, rs = deltas[c]
         ch = corrected[:, :, c]
         ch_corr = np.clip((ch - sm) * (rs / ss) + rm, 0, 255)
-        # Solo reemplaza dentro de la máscara
         corrected[:, :, c] = np.where(mask_bool, ch_corr, ch)
 
     return corrected.astype(np.uint8)
@@ -315,7 +332,6 @@ def compositing_desde_arrays(orig_rgb, limpia_rgb, mascara_gray,
     mask_bool = m > 0.5
 
     if color_match_local:
-        # Corrección local: ajusta solo dentro de la máscara usando el borde como referencia
         b = match_color_local(b.astype(np.uint8), orig_rgb.astype(np.uint8), mask_bool).astype(float)
 
     elif color_match:
@@ -323,8 +339,10 @@ def compositing_desde_arrays(orig_rgb, limpia_rgb, mascara_gray,
 
         context_mask = None
         if dilate_px > 0 and mask_bool.any():
-            struct = np.ones((dilate_px * 2 + 1, dilate_px * 2 + 1), dtype=bool)
-            mask_dilated = binary_dilation(mask_bool, structure=struct)
+            mask_uint8 = mask_bool.astype(np.uint8) * 255
+            kernel = np.ones((dilate_px * 2 + 1, dilate_px * 2 + 1), dtype=np.uint8)
+            dilated_uint8 = cv2.dilate(mask_uint8, kernel)
+            mask_dilated = dilated_uint8 > 0
             context_mask = mask_dilated & ~mask_bool
 
         use_mask = context_mask if (context_mask is not None and context_mask.sum() > 100) else None
@@ -344,7 +362,7 @@ def compositing_desde_arrays(orig_rgb, limpia_rgb, mascara_gray,
         else:
             b = match_color_stats(limpia_uint8, orig_uint8, use_mask).astype(float)
 
-    m_smooth = gaussian_filter(m, sigma=blur_sigma)
+    m_smooth = cv2.GaussianBlur(m, (0, 0), sigmaX=blur_sigma, sigmaY=blur_sigma)
     m_smooth = np.clip(m_smooth, 0, 1)[:, :, np.newaxis]
 
     result = (a * (1 - m_smooth) + b * m_smooth).astype(np.uint8)
@@ -362,10 +380,16 @@ def cmd_align(args):
 
     temp_clean_path = None
     if args.waifu2x:
-        waifu_exe = args.waifu2x_path or find_waifu2x_executable()
-        if not waifu_exe:
-            print("[-] Error: No se encontró el ejecutable waifu2x-ncnn-vulkan.exe.")
-            sys.exit(1)
+        waifu_exe = args.waifu2x_path
+        if waifu_exe:
+            if not os.path.isfile(waifu_exe):
+                print(f"[-] Error: La ruta provista para waifu2x no es válida: {waifu_exe}")
+                sys.exit(1)
+        else:
+            waifu_exe = find_waifu2x_executable()
+            if not waifu_exe:
+                print("[-] Error: No se encontró el ejecutable waifu2x-ncnn-vulkan.")
+                sys.exit(1)
         temp_clean_path = ejecutar_waifu2x(waifu_exe, limpia_path)
         limpia_path = temp_clean_path
 
@@ -374,11 +398,18 @@ def cmd_align(args):
         cover  = cv2.imread(cover_path,  cv2.IMREAD_UNCHANGED)
         limpia = cv2.imread(limpia_path, cv2.IMREAD_UNCHANGED)
 
+        if cover is None:
+            print(f"[-] Error: No se pudo cargar la imagen de portada: {cover_path}")
+            sys.exit(1)
+        if limpia is None:
+            print(f"[-] Error: No se pudo cargar la imagen limpia: {limpia_path}")
+            sys.exit(1)
+
         print(f"   Cover:  {cover.shape[1]}×{cover.shape[0]}px")
         print(f"   Limpia: {limpia.shape[1]}×{limpia.shape[0]}px")
 
-        cover_bgr  = cover[:, :, :3]  if cover.shape[2]  == 4 else cover
-        limpia_bgr = limpia[:, :, :3] if limpia.shape[2] == 4 else limpia
+        cover_bgr  = cover[:, :, :3]  if (len(cover.shape) == 3 and cover.shape[2] == 4) else cover
+        limpia_bgr = limpia[:, :, :3] if (len(limpia.shape) == 3 and limpia.shape[2] == 4) else limpia
 
         H = alinear_automatico(cover_bgr, limpia_bgr)
         alineada = aplicar_homografia(cover, limpia, H)
@@ -400,16 +431,26 @@ def cmd_clean(args):
     cover_path = get_valid_path(args.cover)
     limpia_path = get_valid_path(args.limpia)
     
-    if not os.path.isfile("mascara.png"):
-        print("[-] Error: No se encontró el archivo 'mascara.png' en el directorio.")
+    mask_path = args.mask
+    if not os.path.isfile(mask_path):
+        if not mask_path.lower().endswith(".png"):
+            mask_path = mask_path + ".png"
+    if not os.path.isfile(mask_path):
+        print(f"[-] Error: No se encontró el archivo de máscara: {args.mask}")
         sys.exit(1)
 
     temp_clean_path = None
     if args.waifu2x:
-        waifu_exe = args.waifu2x_path or find_waifu2x_executable()
-        if not waifu_exe:
-            print("[-] Error: No se encontró el ejecutable waifu2x-ncnn-vulkan.exe.")
-            sys.exit(1)
+        waifu_exe = args.waifu2x_path
+        if waifu_exe:
+            if not os.path.isfile(waifu_exe):
+                print(f"[-] Error: La ruta provista para waifu2x no es válida: {waifu_exe}")
+                sys.exit(1)
+        else:
+            waifu_exe = find_waifu2x_executable()
+            if not waifu_exe:
+                print("[-] Error: No se encontró el ejecutable waifu2x-ncnn-vulkan.")
+                sys.exit(1)
         temp_clean_path = ejecutar_waifu2x(waifu_exe, limpia_path)
         limpia_path = temp_clean_path
 
@@ -418,24 +459,43 @@ def cmd_clean(args):
         cover  = cv2.imread(cover_path,  cv2.IMREAD_UNCHANGED)
         limpia = cv2.imread(limpia_path, cv2.IMREAD_UNCHANGED)
 
+        if cover is None:
+            print(f"[-] Error: No se pudo cargar la imagen de portada: {cover_path}")
+            sys.exit(1)
+        if limpia is None:
+            print(f"[-] Error: No se pudo cargar la imagen limpia: {limpia_path}")
+            sys.exit(1)
+
         print(f"   Cover:  {cover.shape[1]}×{cover.shape[0]}px")
         print(f"   Limpia: {limpia.shape[1]}×{limpia.shape[0]}px")
 
-        cover_bgr  = cover[:, :, :3]  if cover.shape[2]  == 4 else cover
-        limpia_bgr = limpia[:, :, :3] if limpia.shape[2] == 4 else limpia
+        cover_bgr  = cover[:, :, :3]  if (len(cover.shape) == 3 and cover.shape[2] == 4) else cover
+        limpia_bgr = limpia[:, :, :3] if (len(limpia.shape) == 3 and limpia.shape[2] == 4) else limpia
 
         H = alinear_automatico(cover_bgr, limpia_bgr)
         print("\n[*] Aplicando transformación de perspectiva...")
         alineada_cv = aplicar_homografia(cover, limpia, H)
         alineada_bgr = alineada_cv[:, :, :3] if alineada_cv.ndim == 3 and alineada_cv.shape[2] == 4 else alineada_cv
 
-        mascara_pil = Image.open("mascara.png").convert("L")
-        cover_pil   = Image.fromarray(cv2.cvtColor(cover_bgr, cv2.COLOR_BGR2RGB))
+        mascara_pil = Image.open(mask_path)
+        if mascara_pil.mode in ("RGBA", "LA") or (mascara_pil.mode == "P" and "transparency" in mascara_pil.info):
+            mascara_pil = mascara_pil.split()[-1]
+        else:
+            mascara_pil = mascara_pil.convert("L")
+
+        if len(cover_bgr.shape) == 2 or cover_bgr.shape[2] == 1:
+            cover_rgb = cv2.cvtColor(cover_bgr, cv2.COLOR_GRAY2RGB)
+        else:
+            cover_rgb = cv2.cvtColor(cover_bgr, cv2.COLOR_BGR2RGB)
+        cover_pil = Image.fromarray(cover_rgb)
 
         if mascara_pil.size != cover_pil.size:
             mascara_pil = mascara_pil.resize(cover_pil.size, Image.LANCZOS)
 
-        alineada_rgb = cv2.cvtColor(alineada_bgr, cv2.COLOR_BGR2RGB)
+        if len(alineada_bgr.shape) == 2 or alineada_bgr.shape[2] == 1:
+            alineada_rgb = cv2.cvtColor(alineada_bgr, cv2.COLOR_GRAY2RGB)
+        else:
+            alineada_rgb = cv2.cvtColor(alineada_bgr, cv2.COLOR_BGR2RGB)
         alineada_pil = Image.fromarray(alineada_rgb)
         if alineada_pil.size != cover_pil.size:
             alineada_pil = alineada_pil.resize(cover_pil.size, Image.LANCZOS)
@@ -496,6 +556,8 @@ def main():
     )
     p_clean.add_argument("cover",   help="Imagen de la cover (con o sin .jpg/.png)")
     p_clean.add_argument("limpia",  help="Imagen limpia (con o sin .jpg/.png)")
+    p_clean.add_argument("--mask", type=str, default="mascara.png",
+                         help="Nombre o ruta del archivo de la máscara (default: mascara.png)")
     p_clean.add_argument("--blur", type=float, default=4,
                          help="Suavidad del borde de fusión en px (default: 4)")
     p_clean.add_argument("--color-match", action="store_true",

@@ -18,7 +18,7 @@ El script alinea automáticamente ambas imágenes usando algoritmos de visión c
 Es necesario contar con Python y las siguientes librerías:
 
 ```bash
-pip install opencv-contrib-python pillow scipy numpy
+pip install opencv-contrib-python pillow numpy
 ```
 
 Nota: Es importante instalar `opencv-contrib-python` en lugar de `opencv-python` básico para disponer del detector de puntos de referencia SIFT.
@@ -31,7 +31,7 @@ El script no requiere ingresar las extensiones de archivo (.jpg o .png) de forma
 
 Alinea la imagen limpia sobre la original, ajusta el color y aplica la máscara para generar el resultado final.
 
-Requisito: Debe existir un archivo llamado `mascara.png` en el mismo directorio de ejecución del script, que delimite las zonas de texto.
+Requisito: Debe existir un archivo de máscara (por defecto `mascara.png` en el mismo directorio de ejecución) que delimite las zonas de texto.
 
 Uso básico (recomendado):
 ```bash
@@ -39,6 +39,7 @@ python cover_editor.py clean cover clean --color-match
 ```
 
 Opciones disponibles para `clean`:
+* `--mask <ruta>`: Especifica el nombre o ruta del archivo de la máscara (por defecto: `mascara.png`).
 * `--color-match`: Ajusta los colores de la imagen limpia para que coincidan con la original. Es la opción recomendada para evitar saltos de iluminación y variaciones de color generadas por la IA.
 * `--color-match-local`: Aplica el ajuste de color únicamente dentro de la máscara, tomando como referencia los píxeles adyacentes del contorno exterior. Útil cuando los colores generales de la limpia por IA difieren demasiado del fondo original.
 * `--method [stats | reinhard | lut]`: Define el algoritmo matemático para el ajuste de color. El valor por defecto es `stats`. Puedes cambiarlo a `reinhard` o `lut` si notas tonalidades extrañas en el resultado final.
