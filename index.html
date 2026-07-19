@@ -1,283 +1,486 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Cover Editor - Limpiador de Portadas</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
-</head>
-<body>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
     <!-- Pantalla de Carga de OpenCV.js -->
     <div id="loading-overlay" class="overlay">
-        <div class="loader-content">
-            <div class="spinner"></div>
-            <h2>Cargando OpenCV.js</h2>
-            <p>Por favor espera un momento mientras se inicializa el motor en WebAssembly...</p>
-        </div>
+      <div class="loader-content">
+        <div class="spinner"></div>
+        <h2>Cargando OpenCV.js</h2>
+        <p>
+          Por favor espera un momento mientras se inicializa el motor en
+          WebAssembly...
+        </p>
+      </div>
     </div>
 
     <!-- Contenedor Principal -->
     <div class="main-container">
-        <header>
-            <h1>Cover Editor Web</h1>
-            <p class="subtitle">Limpieza de texto en portadas de novelas ligeras mediante alineación y máscaras</p>
-        </header>
+      <header>
+        <h1>Cover Editor Web</h1>
+        <p class="subtitle">
+          Limpieza de texto en portadas de novelas ligeras mediante alineación y
+          máscaras
+        </p>
+      </header>
 
-        <!-- Sección de Entrada: Archivos -->
-        <section class="section card">
-            <h2 class="section-title">1. Cargar Imágenes</h2>
-            <div class="dropzones-container">
-                <!-- Dropzone Cover Original -->
-                <div class="dropzone" id="dz-cover">
-                    <input type="file" id="input-cover" accept="image/*" class="file-input">
-                    <div class="dz-message">
-                        <span class="icon">
-                            <svg class="svg-icon"><use href="/icons.svg#icon-cover"></use></svg>
-                        </span>
-                        <h3>Portada Original</h3>
-                        <p>Arrastra aquí o haz clic para subir la imagen con texto</p>
-                    </div>
-                    <div class="dz-preview" id="preview-cover"></div>
-                    <button type="button" class="btn-remove-file" title="Eliminar imagen" style="display: none;">
-                        <svg class="svg-icon-sm"><use href="/icons.svg#icon-trash"></use></svg>
-                    </button>
-                </div>
-
-                <!-- Dropzone Imagen Limpia -->
-                <div class="dropzone" id="dz-clean">
-                    <input type="file" id="input-clean" accept="image/*" class="file-input">
-                    <div class="dz-message">
-                        <span class="icon">
-                            <svg class="svg-icon"><use href="/icons.svg#icon-clean"></use></svg>
-                        </span>
-                        <h3>Imagen Limpia (Sin Texto)</h3>
-                        <p>Arrastra aquí o haz clic para subir la versión limpia</p>
-                    </div>
-                    <div class="dz-preview" id="preview-clean"></div>
-                    <button type="button" class="btn-remove-file" title="Eliminar imagen" style="display: none;">
-                        <svg class="svg-icon-sm"><use href="/icons.svg#icon-trash"></use></svg>
-                    </button>
-                </div>
-
-                <!-- Dropzone Máscara -->
-                <div class="dropzone" id="dz-mask">
-                    <input type="file" id="input-mask" accept="image/*" class="file-input">
-                    <div class="dz-message">
-                        <span class="icon">
-                            <svg class="svg-icon"><use href="/icons.svg#icon-mask"></use></svg>
-                        </span>
-                        <h3>Máscara PNG</h3>
-                        <p>Sube la máscara o usa el editor</p>
-                        <button type="button" id="btn-paint-mask" class="btn btn-secondary btn-sm" disabled>Pintar Máscara</button>
-                    </div>
-                    <div class="dz-preview" id="preview-mask"></div>
-                    <button type="button" class="btn-remove-file" title="Eliminar máscara" style="display: none;">
-                        <svg class="svg-icon-sm"><use href="/icons.svg#icon-trash"></use></svg>
-                    </button>
-                </div>
+      <!-- Sección de Entrada: Archivos -->
+      <section class="section card">
+        <h2 class="section-title">1. Cargar Imágenes</h2>
+        <div class="dropzones-container">
+          <!-- Dropzone Cover Original -->
+          <div class="dropzone" id="dz-cover">
+            <input
+              type="file"
+              id="input-cover"
+              accept="image/*"
+              class="file-input"
+            />
+            <div class="dz-message">
+              <span class="icon">
+                <svg class="svg-icon">
+                  <use href="/icons.svg#icon-cover"></use>
+                </svg>
+              </span>
+              <h3>Portada Original</h3>
+              <p>Arrastra aquí o haz clic para subir la imagen con texto</p>
             </div>
-        </section>
+            <div class="dz-preview" id="preview-cover"></div>
+            <button
+              type="button"
+              class="btn-remove-file"
+              title="Eliminar imagen"
+              style="display: none"
+            >
+              <svg class="svg-icon-sm">
+                <use href="/icons.svg#icon-trash"></use>
+              </svg>
+            </button>
+          </div>
 
-        <!-- Sección de Parámetros -->
-        <section class="section card">
-            <h2 class="section-title">2. Parámetros de Procesamiento</h2>
-            <div class="parameters-grid">
-                
-                <!-- Ajuste de Color -->
-                <div class="param-group">
-                    <h3>Ajuste de Color</h3>
-                    <div class="control-row">
-                        <label class="checkbox-container">
-                            <input type="checkbox" id="param-color-match" checked>
-                            <span class="checkmark"></span>
-                            Ajustar Color General (Color Match)
-                        </label>
-                    </div>
-                    <div class="control-row">
-                        <label class="checkbox-container">
-                            <input type="checkbox" id="param-color-local">
-                            <span class="checkmark"></span>
-                            Ajustar Color Local (Dentro de Máscara)
-                        </label>
-                    </div>
-                    <div class="control-row">
-                        <label for="param-method">Método de Ajuste:</label>
-                        <select id="param-method">
-                            <option value="stats" selected>Estadísticas (Stats)</option>
-                            <option value="reinhard">Reinhard (Espacio Lab)</option>
-                            <option value="lut">LUT (Histogram Matching)</option>
-                        </select>
-                    </div>
-                    <div class="control-row">
-                        <label for="param-dilate">Dilación de Contexto (px):</label>
-                        <div class="slider-val-container">
-                            <input type="range" id="param-dilate" min="0" max="100" value="20">
-                            <span class="slider-value" id="val-dilate">20</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Fusión y Difuminado -->
-                <div class="param-group">
-                    <h3>Bordes y Difuminado</h3>
-                    <div class="control-row">
-                        <label for="param-blur">Difuminado del Borde (Blur px):</label>
-                        <div class="slider-val-container">
-                            <input type="range" id="param-blur" min="0" max="20" step="0.5" value="4">
-                            <span class="slider-value" id="val-blur">4</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Waifu2x (Deshabilitado) -->
-                <div class="param-group disabled-group">
-                    <div class="group-header">
-                        <h3>Optimización Waifu2x</h3>
-                        <span class="badge">Próximamente</span>
-                    </div>
-                    <div class="control-row">
-                        <label class="checkbox-container disabled">
-                            <input type="checkbox" id="param-waifu2x" disabled>
-                            <span class="checkmark"></span>
-                            Ejecutar Waifu2x
-                        </label>
-                    </div>
-                    <div class="control-row">
-                        <label for="param-waifu2x-scale" class="disabled">Aumento de resolución:</label>
-                        <select id="param-waifu2x-scale" disabled>
-                            <option value="none">Ninguno</option>
-                            <option value="2x" selected>2x</option>
-                            <option value="4x">4x</option>
-                        </select>
-                    </div>
-                    <div class="control-row">
-                        <label for="param-waifu2x-noise" class="disabled">Reducción de Ruido:</label>
-                        <select id="param-waifu2x-noise" disabled>
-                            <option value="none">Ninguno</option>
-                            <option value="1">Nivel 1</option>
-                            <option value="2" selected>Nivel 2</option>
-                            <option value="3">Nivel 3</option>
-                        </select>
-                    </div>
-                    <div class="control-row">
-                        <label for="param-waifu2x-model" class="disabled">Modelo Waifu2x:</label>
-                        <select id="param-waifu2x-model" disabled>
-                            <option value="cunet" selected>models-cunet (Recomendado)</option>
-                            <option value="upconv">models-upconv_7_anime</option>
-                        </select>
-                    </div>
-                </div>
-
+          <!-- Dropzone Imagen Limpia -->
+          <div class="dropzone" id="dz-clean">
+            <input
+              type="file"
+              id="input-clean"
+              accept="image/*"
+              class="file-input"
+            />
+            <div class="dz-message">
+              <span class="icon">
+                <svg class="svg-icon">
+                  <use href="/icons.svg#icon-clean"></use>
+                </svg>
+              </span>
+              <h3>Imagen Limpia (Sin Texto)</h3>
+              <p>Arrastra aquí o haz clic para subir la versión limpia</p>
             </div>
+            <div class="dz-preview" id="preview-clean"></div>
+            <button
+              type="button"
+              class="btn-remove-file"
+              title="Eliminar imagen"
+              style="display: none"
+            >
+              <svg class="svg-icon-sm">
+                <use href="/icons.svg#icon-trash"></use>
+              </svg>
+            </button>
+          </div>
 
-            <!-- Consola de Progreso / Mensajes -->
-            <div id="console-output" class="console-box" style="display: none;"></div>
-
-            <!-- Botón Procesar -->
-            <div class="action-container">
-                <button type="button" id="btn-process" class="btn btn-primary btn-large" disabled>Procesar Imagen</button>
+          <!-- Dropzone Máscara -->
+          <div class="dropzone" id="dz-mask">
+            <input
+              type="file"
+              id="input-mask"
+              accept="image/*"
+              class="file-input"
+            />
+            <div class="dz-message">
+              <span class="icon">
+                <svg class="svg-icon">
+                  <use href="/icons.svg#icon-mask"></use>
+                </svg>
+              </span>
+              <h3>Máscara PNG</h3>
+              <p>Sube la máscara o usa el editor</p>
+              <button
+                type="button"
+                id="btn-paint-mask"
+                class="btn btn-secondary btn-sm"
+                disabled
+              >
+                Pintar Máscara
+              </button>
             </div>
-        </section>
+            <div class="dz-preview" id="preview-mask"></div>
+            <button
+              type="button"
+              class="btn-edit-mask"
+              id="btn-edit-mask"
+              title="Editar máscara"
+              style="display: none"
+            >
+              <svg class="svg-icon-sm">
+                <use href="/icons.svg#icon-brush"></use>
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="btn-remove-file"
+              title="Eliminar máscara"
+              style="display: none"
+            >
+              <svg class="svg-icon-sm">
+                <use href="/icons.svg#icon-trash"></use>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </section>
 
-        <!-- Sección del Resultado -->
-        <section class="section card" id="section-result" style="display: none;">
-            <h2 class="section-title">3. Comparación y Descarga</h2>
-            
-            <div class="result-actions">
-                <button type="button" id="btn-reset-view" class="btn btn-secondary btn-sm">
-                    <svg class="svg-icon-sm" style="margin-right: 4px;"><use href="/icons.svg#icon-reset"></use></svg>Restablecer Vista
-                </button>
-                <a id="btn-download" class="btn btn-success" download="portada_limpia.jpg">
-                    <svg class="svg-icon-sm" style="margin-right: 6px;"><use href="/icons.svg#icon-download"></use></svg>Descargar Resultado
-                </a>
+      <!-- Sección de Parámetros -->
+      <section class="section card">
+        <h2 class="section-title">2. Parámetros de Procesamiento</h2>
+        <div class="parameters-grid">
+          <!-- Ajuste de Color -->
+          <div class="param-group">
+            <h3>Ajuste de Color</h3>
+            <div class="control-row">
+              <label class="checkbox-container">
+                <input type="checkbox" id="param-color-match" checked />
+                <span class="checkmark"></span>
+                Ajustar Color General (Color Match)
+              </label>
             </div>
+            <div class="control-row">
+              <label class="checkbox-container">
+                <input type="checkbox" id="param-color-local" />
+                <span class="checkmark"></span>
+                Ajustar Color Local (Dentro de Máscara)
+              </label>
+            </div>
+            <div class="control-row">
+              <label for="param-method">Método de Ajuste:</label>
+              <select id="param-method">
+                <option value="stats" selected>Estadísticas (Stats)</option>
+                <option value="reinhard">Reinhard (Espacio Lab)</option>
+                <option value="lut">LUT (Histogram Matching)</option>
+              </select>
+            </div>
+            <div class="control-row">
+              <label for="param-dilate">Dilación de Contexto (px):</label>
+              <div class="slider-val-container">
+                <input
+                  type="range"
+                  id="param-dilate"
+                  min="0"
+                  max="100"
+                  value="20"
+                />
+                <span class="slider-value" id="val-dilate">20</span>
+              </div>
+            </div>
+          </div>
 
-            <div class="viewer-instructions">
-                <span><svg class="svg-icon-sm" style="margin-right: 4px; vertical-align: middle;"><use href="/icons.svg#icon-info"></use></svg> Usa la rueda del mouse para hacer <strong>Zoom</strong> y arrastra con el clic izquierdo para mover la imagen. Arrastra la barra central para comparar.</span>
+          <!-- Fusión y Difuminado -->
+          <div class="param-group">
+            <h3>Bordes y Difuminado</h3>
+            <div class="control-row">
+              <label for="param-blur">Difuminado del Borde (Blur px):</label>
+              <div class="slider-val-container">
+                <input
+                  type="range"
+                  id="param-blur"
+                  min="0"
+                  max="20"
+                  step="0.5"
+                  value="4"
+                />
+                <span class="slider-value" id="val-blur">4</span>
+              </div>
             </div>
+          </div>
 
-            <!-- Contenedor del visor deslizante con zoom -->
-            <div class="compare-viewer-outer">
-                <div class="compare-viewer" id="compare-viewer">
-                    <div class="viewer-pan-zoom" id="viewer-pan-zoom">
-                        <!-- Imagen Original (Base) -->
-                        <img id="img-result-before" src="" alt="Original">
-                        <!-- Imagen Limpia (Capa Superior Deslizable) -->
-                        <img id="img-result-after" src="" alt="Resultado">
-                    </div>
-                    <!-- Barra de deslizamiento central (Estática) -->
-                    <div class="compare-handle" id="compare-handle">
-                        <div class="handle-line"></div>
-                        <div class="handle-button">↔</div>
-                    </div>
-                </div>
+          <!-- Waifu2x (Deshabilitado) -->
+          <div class="param-group disabled-group">
+            <div class="group-header">
+              <h3>Optimización Waifu2x</h3>
+              <span class="badge">Próximamente</span>
             </div>
-        </section>
+            <div class="control-row">
+              <label class="checkbox-container disabled">
+                <input type="checkbox" id="param-waifu2x" disabled />
+                <span class="checkmark"></span>
+                Ejecutar Waifu2x
+              </label>
+            </div>
+            <div class="control-row">
+              <label for="param-waifu2x-scale" class="disabled"
+                >Aumento de resolución:</label
+              >
+              <select id="param-waifu2x-scale" disabled>
+                <option value="none">Ninguno</option>
+                <option value="2x" selected>2x</option>
+                <option value="4x">4x</option>
+              </select>
+            </div>
+            <div class="control-row">
+              <label for="param-waifu2x-noise" class="disabled"
+                >Reducción de Ruido:</label
+              >
+              <select id="param-waifu2x-noise" disabled>
+                <option value="none">Ninguno</option>
+                <option value="1">Nivel 1</option>
+                <option value="2" selected>Nivel 2</option>
+                <option value="3">Nivel 3</option>
+              </select>
+            </div>
+            <div class="control-row">
+              <label for="param-waifu2x-model" class="disabled"
+                >Modelo Waifu2x:</label
+              >
+              <select id="param-waifu2x-model" disabled>
+                <option value="cunet" selected>
+                  models-cunet (Recomendado)
+                </option>
+                <option value="upconv">models-upconv_7_anime</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Consola de Progreso / Mensajes -->
+        <div
+          id="console-output"
+          class="console-box"
+          style="display: none"
+        ></div>
+
+        <!-- Botón Procesar -->
+        <div class="action-container">
+          <button
+            type="button"
+            id="btn-process"
+            class="btn btn-primary btn-large"
+            disabled
+          >
+            Procesar Imagen
+          </button>
+        </div>
+      </section>
+
+      <!-- Sección del Resultado -->
+      <section class="section card" id="section-result" style="display: none">
+        <h2 class="section-title">3. Comparación y Descarga</h2>
+
+        <div class="result-actions">
+          <button
+            type="button"
+            id="btn-reset-view"
+            class="btn btn-secondary btn-sm"
+          >
+            <svg class="svg-icon-sm" style="margin-right: 4px">
+              <use href="/icons.svg#icon-reset"></use>
+            </svg>
+            Restablecer Vista
+          </button>
+          <a
+            id="btn-download"
+            class="btn btn-success"
+            download="portada_limpia.jpg"
+          >
+            <svg class="svg-icon-sm" style="margin-right: 6px">
+              <use href="/icons.svg#icon-download"></use>
+            </svg>
+            Descargar Resultado
+          </a>
+        </div>
+
+        <div class="viewer-instructions">
+          <span
+            ><svg
+              class="svg-icon-sm"
+              style="margin-right: 4px; vertical-align: middle"
+            >
+              <use href="/icons.svg#icon-info"></use>
+            </svg>
+            Usa la rueda del mouse para hacer <strong>Zoom</strong> y arrastra
+            con el clic izquierdo para mover la imagen. Arrastra la barra
+            central para comparar.</span
+          >
+        </div>
+
+        <!-- Contenedor del visor deslizante con zoom -->
+        <div class="compare-viewer-outer">
+          <div class="compare-viewer" id="compare-viewer">
+            <div class="viewer-pan-zoom" id="viewer-pan-zoom">
+              <!-- Imagen Original (Base) -->
+              <img id="img-result-before" src="" alt="Original" />
+              <!-- Imagen Limpia (Capa Superior Deslizable) -->
+              <img id="img-result-after" src="" alt="Resultado" />
+            </div>
+            <!-- Barra de deslizamiento central (Estática) -->
+            <div class="compare-handle" id="compare-handle">
+              <div class="handle-line"></div>
+              <div class="handle-button">↔</div>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
 
     <!-- MODAL: Editor de Máscara -->
     <div id="mask-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Dibujar Máscara de Limpieza</h2>
-                <span class="close-modal" id="modal-close">&times;</span>
-            </div>
-            <div class="modal-body">
-                <p class="modal-tip">Pinta con color blanco sólido sobre las letras o áreas que deseas eliminar. El resto del arte original se conservará intacto.</p>
-                
-                <!-- Controles del editor -->
-                <div class="editor-controls">
-                    <div class="control-row">
-                        <button type="button" id="editor-tool-brush" class="btn btn-primary btn-sm active">
-                            <svg class="svg-icon-sm" style="margin-right: 4px;"><use href="/icons.svg#icon-brush"></use></svg>Pincel
-                        </button>
-                        <button type="button" id="editor-tool-eraser" class="btn btn-secondary btn-sm">
-                            <svg class="svg-icon-sm" style="margin-right: 4px;"><use href="/icons.svg#icon-eraser"></use></svg>Borrador
-                        </button>
-                        <button type="button" id="editor-tool-pan" class="btn btn-secondary btn-sm">
-                            <svg class="svg-icon-sm" style="margin-right: 4px;"><use href="/icons.svg#icon-pan"></use></svg>Mover
-                        </button>
-                        <button type="button" id="editor-clear" class="btn btn-danger btn-sm">
-                            <svg class="svg-icon-sm" style="margin-right: 4px;"><use href="/icons.svg#icon-trash"></use></svg>Limpiar Todo
-                        </button>
-                    </div>
-                    
-                    <div class="control-row brush-size-control">
-                        <label for="editor-brush-size">Tamaño: </label>
-                        <input type="range" id="editor-brush-size" min="2" max="100" value="20">
-                        <span id="editor-val-brush-size">20</span>px
-                        <div class="brush-preview-container">
-                            <div class="brush-preview-circle" id="brush-preview"></div>
-                        </div>
-
-                        <label for="editor-opacity" style="margin-left: 20px;">Opacidad: </label>
-                        <input type="range" id="editor-opacity" min="0.1" max="1.0" step="0.05" value="0.7">
-                        <span id="editor-val-opacity">0.7</span>
-                    </div>
-                </div>
-
-                <!-- Canvas del editor -->
-                <div class="editor-canvas-container">
-                    <div class="canvas-wrapper">
-                        <!-- Canvas base que dibuja la imagen de fondo original -->
-                        <canvas id="editor-bg-canvas"></canvas>
-                        <!-- Canvas superior donde se pinta la máscara -->
-                        <canvas id="editor-paint-canvas"></canvas>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" id="editor-cancel" class="btn btn-secondary">Cancelar</button>
-                <button type="button" id="editor-save" class="btn btn-success">Guardar Máscara</button>
-            </div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Dibujar Máscara de Limpieza</h2>
+          <span class="close-modal" id="modal-close">&times;</span>
         </div>
+        <div class="modal-body">
+          <p class="modal-tip">
+            Pinta con color blanco sólido sobre las letras o áreas que deseas
+            eliminar. El resto del arte original se conservará intacto.
+          </p>
+
+          <!-- Controles del editor -->
+          <div class="editor-controls">
+            <div class="control-row tools-row">
+              <button
+                type="button"
+                id="editor-tool-brush"
+                class="btn btn-primary btn-sm active"
+              >
+                <svg class="svg-icon-sm" style="margin-right: 4px">
+                  <use href="/icons.svg#icon-brush"></use>
+                </svg>
+                Pincel
+              </button>
+              <button
+                type="button"
+                id="editor-tool-eraser"
+                class="btn btn-secondary btn-sm"
+              >
+                <svg class="svg-icon-sm" style="margin-right: 4px">
+                  <use href="/icons.svg#icon-eraser"></use>
+                </svg>
+                Borrador
+              </button>
+              <button
+                type="button"
+                id="editor-tool-pan"
+                class="btn btn-secondary btn-sm"
+              >
+                <svg class="svg-icon-sm" style="margin-right: 4px">
+                  <use href="/icons.svg#icon-pan"></use>
+                </svg>
+                Mover
+              </button>
+              <button
+                type="button"
+                id="editor-clear"
+                class="btn btn-danger btn-sm"
+              >
+                <svg class="svg-icon-sm" style="margin-right: 4px">
+                  <use href="/icons.svg#icon-trash"></use>
+                </svg>
+                Limpiar Todo
+              </button>
+            </div>
+
+            <div class="control-row settings-row">
+              <div class="slider-group">
+                <label for="editor-brush-size">Tamaño: </label>
+                <input
+                  type="range"
+                  id="editor-brush-size"
+                  min="2"
+                  max="100"
+                  value="20"
+                />
+                <span id="editor-val-brush-size">20</span
+                ><span class="unit">px</span>
+                <div class="brush-preview-container">
+                  <div class="brush-preview-circle" id="brush-preview"></div>
+                </div>
+              </div>
+
+              <div class="slider-group">
+                <label for="editor-opacity">Opacidad: </label>
+                <input
+                  type="range"
+                  id="editor-opacity"
+                  min="0.1"
+                  max="1.0"
+                  step="0.1"
+                  value="0.7"
+                />
+                <span id="editor-val-opacity">0.7</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Canvas del editor -->
+          <div class="editor-canvas-container">
+            <div class="canvas-wrapper">
+              <!-- Canvas base que dibuja la imagen de fondo original -->
+              <canvas id="editor-bg-canvas"></canvas>
+              <!-- Canvas superior donde se pinta la máscara -->
+              <canvas id="editor-paint-canvas"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="editor-cancel" class="btn btn-secondary">
+            Cancelar
+          </button>
+          <button type="button" id="editor-save" class="btn btn-success">
+            Guardar Máscara
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: Confirmación Personalizada -->
+    <div id="confirm-modal" class="modal">
+      <div class="modal-content confirm-modal-content">
+        <div class="modal-header">
+          <h2>¿Confirmar Acción?</h2>
+        </div>
+        <div class="modal-body" style="align-items: flex-start">
+          <p id="confirm-modal-text">
+            ¿Seguro que deseas borrar toda la máscara pintada?
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="confirm-cancel" class="btn btn-secondary">
+            Cancelar
+          </button>
+          <button type="button" id="confirm-accept" class="btn btn-danger">
+            Borrar Todo
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- OpenCV.js asíncrono -->
-    <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady();" onerror="onOpenCvError();"></script>
+    <script
+      async
+      src="https://docs.opencv.org/4.x/opencv.js"
+      onload="onOpenCvReady()"
+      onerror="onOpenCvError()"
+    ></script>
     <script src="app.js"></script>
-</body>
+  </body>
 </html>

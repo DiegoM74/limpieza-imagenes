@@ -56,6 +56,10 @@ Limpieza y restauración de portadas de novelas ligeras eliminando las zonas de 
 *   **Conversión de Coordenadas**: Para dibujar con exactitud en la resolución nativa de la imagen, las coordenadas de pantalla se recalculan restando el desplazamiento y dividiendo entre la escala actual:
     $$\text{Local} = \frac{\text{Pantalla} - \text{Pan}}{\text{Escala}}$$
 *   **Edición**: Al cargar una máscara preexistente (por ejemplo, subida por archivo), si no cuenta con canal alpha, el editor mapea los píxeles oscuros ($R,G,B < 50$) a transparente y fuerza los píxeles claros a blanco sólido, permitiendo editar máscaras exportadas de Krita/Photoshop de inmediato.
+*   **Deshacer (Undo)**: Soporte para atajo `Ctrl+Z` (o `Cmd+Z`) para revertir trazos de dibujo/borrador o limpieza general, gestionado a través de una pila de estados (`undoStack`) con un tope de 25 capturas mediante `getImageData`.
+*   **Control del Ciclo de Vida**: Al guardar la máscara desde el editor o subirla externamente, se habilitan los botones `.btn-remove-file` para eliminarla y `.btn-edit-mask` para reabrirla en el lienzo interactivo.
+*   **Confirmación Integrada**: El borrado total ("Limpiar Todo") se asiste con un modal personalizado (`#confirm-modal`) que evita bloqueos del navegador mediante promesas.
+*   **Estabilidad del Slider**: Rango de opacidad configurado con paso `0.1` y visualización estática formateada (`toFixed(1)`) de ancho fijo en CSS para mitigar el desplazamiento de componentes adyacentes.
 
 ### 6. Deslizador de Comparación Estático
 *   El manejador `#compare-handle` es hijo de `.compare-viewer` (estático), manteniéndose siempre visible en pantalla sin importar el zoom del lienzo.
