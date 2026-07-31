@@ -327,50 +327,86 @@
             </div>
           </div>
 
-          <!-- Waifu2x (Deshabilitado) -->
-          <div class="param-group disabled-group">
+          <!-- Optimización Waifu2x (Habilitado Client-Side) -->
+          <div class="param-group">
             <div class="group-header">
               <h3>Optimización Waifu2x</h3>
-              <span class="badge">Próximamente</span>
-            </div>
-            <div class="control-row">
-              <label class="checkbox-container disabled">
-                <input type="checkbox" id="param-waifu2x" disabled />
-                <span class="checkmark"></span>
-                Ejecutar Waifu2x
-              </label>
-            </div>
-            <div class="control-row">
-              <label for="param-waifu2x-scale" class="disabled"
-                >Aumento de resolución:</label
+              <span class="badge badge-info" id="waifu2x-backend-badge"
+                >Acelerado por IA</span
               >
-              <select id="param-waifu2x-scale" disabled>
-                <option value="none">Ninguno</option>
-                <option value="2x" selected>2x</option>
+            </div>
+            <div class="control-row">
+              <label class="checkbox-container">
+                <input type="checkbox" id="param-waifu2x" />
+                <span class="checkmark"></span>
+                Ejecutar Waifu2x en Imagen Limpia
+              </label>
+              <button
+                type="button"
+                class="btn-info-icon"
+                data-guide-target="guide-waifu2x-exec"
+                title="Ver pros, contras y detalles"
+              >
+                <svg class="svg-icon-xs">
+                  <use href="icons.svg#icon-info"></use>
+                </svg>
+              </button>
+            </div>
+            <div class="control-row">
+              <label for="param-waifu2x-scale">Aumento de resolución:</label>
+              <select id="param-waifu2x-scale">
+                <option value="none">Ninguno (1x)</option>
+                <option value="2x" selected>2x (Recomendado)</option>
                 <option value="4x">4x</option>
               </select>
+              <button
+                type="button"
+                class="btn-info-icon"
+                data-guide-target="guide-waifu2x-scale"
+                title="Ver pros, contras y detalles"
+              >
+                <svg class="svg-icon-xs">
+                  <use href="icons.svg#icon-info"></use>
+                </svg>
+              </button>
             </div>
             <div class="control-row">
-              <label for="param-waifu2x-noise" class="disabled"
-                >Reducción de Ruido:</label
-              >
-              <select id="param-waifu2x-noise" disabled>
+              <label for="param-waifu2x-noise">Reducción de Ruido:</label>
+              <select id="param-waifu2x-noise">
                 <option value="none">Ninguno</option>
                 <option value="1">Nivel 1</option>
-                <option value="2" selected>Nivel 2</option>
+                <option value="2" selected>Nivel 2 (Recomendado)</option>
                 <option value="3">Nivel 3</option>
               </select>
+              <button
+                type="button"
+                class="btn-info-icon"
+                data-guide-target="guide-waifu2x-noise"
+                title="Ver pros, contras y detalles"
+              >
+                <svg class="svg-icon-xs">
+                  <use href="icons.svg#icon-info"></use>
+                </svg>
+              </button>
             </div>
             <div class="control-row">
-              <label for="param-waifu2x-model" class="disabled"
-                >Modelo Waifu2x:</label
-              >
-              <select id="param-waifu2x-model" disabled>
+              <label for="param-waifu2x-model">Modelo Waifu2x:</label>
+              <select id="param-waifu2x-model">
                 <option value="cunet" selected>
-                  models-cunet (Recomendado)
+                  models-cunet (Ilustraciones/LN)
                 </option>
                 <option value="upconv">models-upconv_7_anime</option>
               </select>
+              <button
+                type="button"
+                class="btn-info-icon"
+                data-guide-target="guide-waifu2x-model"
+                title="Ver pros, contras y detalles"
+              >
+                <svg class="svg-icon-xs">
+                  <use href="icons.svg#icon-info"></use>
+                </svg>
+              </button>
             </div>
           </div>
         </div>
@@ -602,7 +638,7 @@
           </p>
 
           <div class="guide-cards-container">
-            <!-- Categoría 1: Ajustes de Color -->
+            <!-- Categoría: Ajustes de Color -->
             <div class="guide-category">
               <h3 class="guide-category-title">Ajuste y Corrección de Color</h3>
 
@@ -708,7 +744,7 @@
               </div>
             </div>
 
-            <!-- Categoría 2: Alineación y Geometría -->
+            <!-- Categoría: Alineación y Geometría -->
             <div class="guide-category">
               <h3 class="guide-category-title">
                 Alineación y Geometría por Homografía (IA)
@@ -776,7 +812,7 @@
               </div>
             </div>
 
-            <!-- Categoría 3: Suavizado y Bordes -->
+            <!-- Categoría: Suavizado y Bordes -->
             <div class="guide-category">
               <h3 class="guide-category-title">Suavizado y Bordes de Fusión</h3>
 
@@ -798,6 +834,117 @@
                 </div>
               </div>
             </div>
+
+            <!-- Categoría: Optimización por IA (Waifu2x Client-Side) -->
+            <div class="guide-category">
+              <h3 class="guide-category-title">
+                Optimización por IA (Waifu2x Client-Side)
+              </h3>
+
+              <!-- Card: Ejecutar Waifu2x -->
+              <div class="guide-card" id="guide-waifu2x-exec">
+                <div class="guide-card-header">
+                  <h3>Ejecutar Waifu2x en Imagen Limpia</h3>
+                  <span class="badge badge-recommended"
+                    >Recomendado para IA</span
+                  >
+                </div>
+                <p class="guide-desc">
+                  Aplica súper-resolución y eliminación de ruido en la versión
+                  limpia generada por IA antes de realizar la alineación y el
+                  reemplazo de texto sobre la portada original.
+                </p>
+                <div class="guide-tags">
+                  <div class="tag tag-pro">
+                    <strong>Pros:</strong> 100% Client-Side con aceleración
+                    WebGPU/WASM. Elimina artefactos de compresión y restaura
+                    trazos finos en arte de novelas ligeras.
+                  </div>
+                  <div class="tag tag-con">
+                    <strong>Contras:</strong> Añade unos segundos de cálculo
+                    según la resolución.
+                  </div>
+                </div>
+              </div>
+
+              <!-- Card: Aumento de Resolución -->
+              <div class="guide-card" id="guide-waifu2x-scale">
+                <div class="guide-card-header">
+                  <h3>Aumento de Resolución (Escala 2x / 4x)</h3>
+                </div>
+                <p class="guide-desc">
+                  Multiplicador de dimensiones para escalar la imagen limpia.
+                </p>
+                <ul class="guide-list">
+                  <li>
+                    <strong>Ninguno (1x):</strong> Solo aplica eliminación de
+                    ruido sin modificar la resolución.
+                  </li>
+                  <li>
+                    <strong>2x (Recomendado):</strong> Duplica ancho y alto de
+                    la imagen (4 veces más píxeles). Equilibrio ideal entre
+                    velocidad y nitidez.
+                  </li>
+                  <li>
+                    <strong>4x:</strong> Cuadruplica dimensiones mediante
+                    pasadas secuenciales 2x. Ideal para impresiones o zooms
+                    exigentes.
+                  </li>
+                </ul>
+              </div>
+
+              <!-- Card: Reducción de Ruido -->
+              <div class="guide-card" id="guide-waifu2x-noise">
+                <div class="guide-card-header">
+                  <h3>Reducción de Ruido (Niveles 1, 2 y 3)</h3>
+                </div>
+                <p class="guide-desc">
+                  Nivel de eliminación de artefactos JPEG, compresión o
+                  distorsión de inpainting producida por motores de IA.
+                </p>
+                <ul class="guide-list">
+                  <li>
+                    <strong>Ninguno:</strong> Mantiene la textura y el grano
+                    original de la imagen.
+                  </li>
+                  <li>
+                    <strong>Nivel 1:</strong> Limpieza leve para imágenes de
+                    alta calidad con mínimo ruido.
+                  </li>
+                  <li>
+                    <strong>Nivel 2 (Recomendado):</strong> Eliminación
+                    equilibrada de artefactos sin perder detalle en líneas
+                    finas.
+                  </li>
+                  <li>
+                    <strong>Nivel 3:</strong> Limpieza intensa para imágenes con
+                    alto nivel de ruido o compresión visible.
+                  </li>
+                </ul>
+              </div>
+
+              <!-- Card: Modelo Waifu2x -->
+              <div class="guide-card" id="guide-waifu2x-model">
+                <div class="guide-card-header">
+                  <h3>
+                    Modelo Waifu2x (models-cunet vs models-upconv_7_anime)
+                  </h3>
+                </div>
+                <ul class="guide-list">
+                  <li>
+                    <strong>models-cunet (Recomendado):</strong> Modelo de red
+                    neuronal convolucional U-Net de alta precisión. Excelente en
+                    preservación de detalles, ojos, cabello y coloreado en
+                    novelas ligeras e ilustraciones.
+                  </li>
+                  <li>
+                    <strong>models-upconv_7_anime:</strong> Modelo clásico
+                    UpConv de 7 capas. Más ligero pero menos preciso en
+                    degradados complejos.
+                  </li>
+                </ul>
+              </div>
+            </div>
           </div>
         </div>
         <div class="modal-footer">
@@ -808,6 +955,13 @@
       </div>
     </div>
 
+    <!-- UPNG.js y Pako para compresión máxima de PNG en 24-bit RGB (Nivel 9) -->
+    <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/upng-js@2.1.0/UPNG.min.js"></script>
+
+    <!-- ONNX Runtime Web con soporte nativo WebGPU y WASM -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.webgpu.min.js"></script>
+    <script src="waifu2x-engine.js?v=1.1"></script>
     <!-- OpenCV.js asíncrono -->
     <script
       async
@@ -815,6 +969,6 @@
       onload="onOpenCvReady()"
       onerror="onOpenCvError()"
     ></script>
-    <script src="app.js?v=1.0"></script>
+    <script src="app.js?v=1.1"></script>
   </body>
 </html>

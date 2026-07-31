@@ -1,8 +1,23 @@
-// Variables de estado global
+/**
+ * ==============================================================================
+ * Limpiador de Ilustraciones Web - Lógica Principal (app.js)
+ * ==============================================================================
+ * Este archivo gestiona la lógica de interfaz de usuario, edición interactiva de
+ * máscaras, llamadas al motor Waifu2x (ONNX Runtime Web), alineación computacional
+ * mediante OpenCV.js (ORB + Homografía RANSAC) y ajuste de color en cliente.
+ *
+ * Para detalles de arquitectura y especificaciones técnicas, consultar AGENTS.md.
+ * ==============================================================================
+ */
+
+// ──────────────────────────────────────────────────────────────────────────────
+// ESTADO GLOBAL DE LA APLICACIÓN
+// ──────────────────────────────────────────────────────────────────────────────
+
 let openCvLoaded = false;
-let imgOriginal = null; // Elemento <img> para original
-let imgClean = null; // Elemento <img> para limpia
-let imgMask = null; // Elemento <img> para máscara (puede ser dataURL de canvas)
+let imgOriginal = null; // Elemento <img> para la portada original
+let imgClean = null; // Elemento <img> para la versión limpia (sin texto)
+let imgMask = null; // Elemento <img> para la máscara (o dataURL del canvas)
 
 // Editor de Máscara (Canvas)
 let bgCanvas, paintCanvas, ctxPaint;
@@ -12,31 +27,9 @@ let lastY = 0;
 let currentTool = "brush"; // 'brush', 'eraser' o 'pan'
 let brushSize = 20;
 
-// Historial para deshacer (Ctrl+Z)
+// Historial para deshacer en el editor (Ctrl+Z / Cmd+Z)
 let undoStack = [];
 const MAX_UNDO_STATES = 25;
-
-function saveUndoState() {
-  if (!paintCanvas || !ctxPaint) return;
-  const state = ctxPaint.getImageData(
-    0,
-    0,
-    paintCanvas.width,
-    paintCanvas.height,
-  );
-  undoStack.push(state);
-  if (undoStack.length > MAX_UNDO_STATES) {
-    undoStack.shift();
-  }
-}
-
-function undo() {
-  if (!paintCanvas || !ctxPaint) return;
-  if (undoStack.length > 0) {
-    const prevState = undoStack.pop();
-    ctxPaint.putImageData(prevState, 0, 0);
-  }
-}
 
 // Estado del Editor de Máscara (Zoom & Paneo)
 let editorScale = 1;
@@ -64,8 +57,12 @@ let startY = 0;
 let isSliding = false;
 let sliderPercent = 50;
 
-// Listeners globales para el espacio en el paneo de máscara y deshacer (Ctrl+Z)
+// ──────────────────────────────────────────────────────────────────────────────
+// GESTIÓN DE ATANCOS DE TECLADO Y CURSOR
+// ──────────────────────────────────────────────────────────────────────────────
+
 window.addEventListener("keydown", (e) => {
+  // Deshacer trazado (Ctrl+Z / Cmd+Z)
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
     const modal = document.getElementById("mask-modal");
     if (modal && modal.style.display === "flex") {
@@ -75,6 +72,7 @@ window.addEventListener("keydown", (e) => {
     }
   }
 
+  // Activar modo Paneo temporal mediante Barra Espaciadora
   if (
     e.code === "Space" &&
     document.activeElement.tagName !== "INPUT" &&
@@ -100,6 +98,9 @@ window.addEventListener("keyup", (e) => {
   }
 });
 
+/**
+ * Actualiza la apariencia del cursor en el canvas según la herramienta activa.
+ */
 function updateCursor() {
   if (!paintCanvas) return;
   if (currentTool === "pan" || spacePressed) {
@@ -111,33 +112,92 @@ function updateCursor() {
   }
 }
 
-// Inicialización de la página
+/**
+ * Guarda el estado actual del canvas en la pila de undo.
+ */
+function saveUndoState() {
+  if (!paintCanvas || !ctxPaint) return;
+  const state = ctxPaint.getImageData(
+    0,
+    0,
+    paintCanvas.width,
+    paintCanvas.height,
+  );
+  undoStack.push(state);
+  if (undoStack.length > MAX_UNDO_STATES) {
+    undoStack.shift();
+  }
+}
+
+/**
+ * Revierte el lienzo al último estado guardado.
+ */
+function undo() {
+  if (!paintCanvas || !ctxPaint) return;
+  if (undoStack.length > 0) {
+    const prevState = undoStack.pop();
+    ctxPaint.putImageData(prevState, 0, 0);
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// INICIALIZACIÓN DE LA APLICACIÓN
+// ──────────────────────────────────────────────────────────────────────────────
+
 window.addEventListener("DOMContentLoaded", () => {
   setupDropzones();
   setupParameters();
   setupParameterGuide();
   setupMaskEditor();
   setupResultViewer();
+  initWaifu2xBackend();
 
-  // Configurar botones de acción
-  document
-    .getElementById("btn-process")
-    .addEventListener("click", processImages);
+  // Configurar botón principal de procesamiento
+  const btnProcess = document.getElementById("btn-process");
+  if (btnProcess) {
+    btnProcess.addEventListener("click", processImages);
+  }
 });
 
-// Carga asíncrona de OpenCV
+/**
+ * Detecta y muestra el backend activo de Waifu2x (WebGPU / WASM).
+ */
+async function initWaifu2xBackend() {
+  if (typeof Waifu2xEngine !== "undefined") {
+    const backendName = await Waifu2xEngine.detectBackend();
+    const badge = document.getElementById("waifu2x-backend-badge");
+    if (badge) {
+      badge.innerText = backendName;
+      if (backendName.includes("WebGPU")) {
+        badge.className = "badge badge-recommended";
+      } else {
+        badge.className = "badge badge-info";
+      }
+    }
+  }
+}
+
+/**
+ * Callback ejecutado al cargar OpenCV.js con éxito.
+ */
 function onOpenCvReady() {
   console.log("[+] OpenCV.js cargado correctamente.");
   openCvLoaded = true;
-  document.getElementById("loading-overlay").style.display = "none";
+  const loadingOverlay = document.getElementById("loading-overlay");
+  if (loadingOverlay) {
+    loadingOverlay.style.display = "none";
+  }
 }
 
+/**
+ * Callback de error al cargar OpenCV.js.
+ */
 function onOpenCvError() {
   alert("Error al cargar OpenCV.js. Por favor, recarga la página.");
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// DROPZONES Y ENTRADA DE ARCHIVOS
+// DROPZONES Y CARGA DE ARCHIVOS
 // ──────────────────────────────────────────────────────────────────────────────
 
 function setupDropzones() {
@@ -145,9 +205,10 @@ function setupDropzones() {
 
   dropzoneIds.forEach((id) => {
     const dz = document.getElementById(id);
+    if (!dz) return;
     const input = dz.querySelector(".file-input");
 
-    // Clic para abrir selector de archivos
+    // Clic para abrir el selector de archivos
     dz.addEventListener("click", (e) => {
       if (
         e.target.closest("button") ||
@@ -163,7 +224,7 @@ function setupDropzones() {
     const btnRemove = dz.querySelector(".btn-remove-file");
     if (btnRemove) {
       btnRemove.addEventListener("click", (e) => {
-        e.stopPropagation(); // Evitar abrir el explorador de archivos
+        e.stopPropagation();
         removeFile(id);
       });
     }
@@ -208,7 +269,7 @@ function handleFile(file, dzId) {
       const dz = document.getElementById(dzId);
       const preview = dz.querySelector(".dz-preview");
       preview.innerHTML = "";
-      preview.appendChild(img.cloneNode());
+      preview.appendChild(img.cloneNode(true));
       preview.style.display = "block";
 
       // Mostrar botón de eliminar
@@ -217,10 +278,11 @@ function handleFile(file, dzId) {
         btnRemove.style.display = "flex";
       }
 
-      // Guardar en la variable correspondiente
+      // Asignar variable correspondiente
       if (dzId === "dz-cover") {
         imgOriginal = img;
-        document.getElementById("btn-paint-mask").disabled = false;
+        const btnPaint = document.getElementById("btn-paint-mask");
+        if (btnPaint) btnPaint.disabled = false;
         log("Portada original cargada.", "info");
       } else if (dzId === "dz-clean") {
         imgClean = img;
@@ -241,20 +303,25 @@ function handleFile(file, dzId) {
 
 function removeFile(dzId) {
   const dz = document.getElementById(dzId);
+  if (!dz) return;
+
   const input = dz.querySelector(".file-input");
   const preview = dz.querySelector(".dz-preview");
   const btnRemove = dz.querySelector(".btn-remove-file");
 
-  input.value = "";
-  preview.innerHTML = "";
-  preview.style.display = "none";
+  if (input) input.value = "";
+  if (preview) {
+    preview.innerHTML = "";
+    preview.style.display = "none";
+  }
   if (btnRemove) {
     btnRemove.style.display = "none";
   }
 
   if (dzId === "dz-cover") {
     imgOriginal = null;
-    document.getElementById("btn-paint-mask").disabled = true;
+    const btnPaint = document.getElementById("btn-paint-mask");
+    if (btnPaint) btnPaint.disabled = true;
     log("Portada original eliminada.", "info");
   } else if (dzId === "dz-clean") {
     imgClean = null;
@@ -271,16 +338,19 @@ function removeFile(dzId) {
 
 function checkReadyToProcess() {
   const btn = document.getElementById("btn-process");
-  if (imgOriginal && imgClean && imgMask) {
-    btn.disabled = false;
-  } else {
-    btn.disabled = true;
+  if (btn) {
+    btn.disabled = !(imgOriginal && imgClean && imgMask);
   }
 }
 
-// Log en consola web
+// ──────────────────────────────────────────────────────────────────────────────
+// CONSOLA WEB Y UTILIDADES
+// ──────────────────────────────────────────────────────────────────────────────
+
 function log(msg, type = "info") {
   const consoleBox = document.getElementById("console-output");
+  if (!consoleBox) return;
+
   consoleBox.style.display = "block";
   let prefix = "[*]";
   if (type === "success") prefix = "[+]";
@@ -291,15 +361,67 @@ function log(msg, type = "info") {
 
 function clearLog() {
   const consoleBox = document.getElementById("console-output");
-  consoleBox.innerText = "";
+  if (consoleBox) {
+    consoleBox.innerText = "";
+  }
+}
+
+/**
+ * Libera de forma segura arreglos y matrices de OpenCV.js para evitar fugas WASM.
+ */
+function safeDeleteCvObjects(...objs) {
+  for (const obj of objs) {
+    if (obj && typeof obj.delete === "function") {
+      try {
+        obj.delete();
+      } catch (_) {
+        // Ignorar si el objeto ya fue liberado previamente
+      }
+    }
+  }
+}
+
+/**
+ * Pausa la ejecución asíncrona permitiendo al navegador renderizar el UI y los logs.
+ */
+function yieldToUI() {
+  return new Promise((resolve) => setTimeout(resolve, 25));
+}
+
+/**
+ * Exporta un canvas como archivo PNG optimizado con compresión de nivel 9 via UPNG.js.
+ */
+async function downloadCanvasAsOptimizedPng(canvas, fileName) {
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+  if (typeof UPNG !== "undefined") {
+    const pngBuffer = UPNG.encode(
+      [imgData.data.buffer],
+      canvas.width,
+      canvas.height,
+      0,
+    );
+    const blob = new Blob([pngBuffer], { type: "image/png" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.download = fileName;
+    a.href = url;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  } else {
+    const a = document.createElement("a");
+    a.download = fileName;
+    a.href = canvas.toDataURL("image/png");
+    a.click();
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// CONTROL DE PARÁMETROS
+// CONFIGURACIÓN DE PARÁMETROS Y GUÍA INTERACTIVA
 // ──────────────────────────────────────────────────────────────────────────────
 
 function setupParameters() {
-  // Sincronizar sliders con sus etiquetas de valor
   const sliders = [
     { id: "param-dilate", valId: "val-dilate" },
     { id: "param-blur", valId: "val-blur" },
@@ -308,9 +430,11 @@ function setupParameters() {
   sliders.forEach((s) => {
     const slider = document.getElementById(s.id);
     const label = document.getElementById(s.valId);
-    slider.addEventListener("input", () => {
-      label.innerText = slider.value;
-    });
+    if (slider && label) {
+      slider.addEventListener("input", () => {
+        label.innerText = slider.value;
+      });
+    }
   });
 
   // Exclusividad mutua entre Ajuste de Color General y Local
@@ -343,7 +467,6 @@ function setupParameterGuide() {
   function openGuide(targetCardId = null) {
     modal.style.display = "flex";
 
-    // Quitar resaltados previos
     document.querySelectorAll(".guide-card, .guide-subcard").forEach((card) => {
       card.classList.remove("guide-card-highlight");
     });
@@ -352,7 +475,6 @@ function setupParameterGuide() {
       const targetCard = document.getElementById(targetCardId);
       if (targetCard) {
         targetCard.classList.add("guide-card-highlight");
-        // Si es una sub-tarjeta, también podemos resaltar suavemente la tarjeta padre
         const parentCard = targetCard.closest(".guide-card");
         if (parentCard && parentCard !== targetCard) {
           parentCard.classList.add("guide-card-highlight");
@@ -375,14 +497,12 @@ function setupParameterGuide() {
   if (btnClose) btnClose.addEventListener("click", closeGuide);
   if (btnAccept) btnAccept.addEventListener("click", closeGuide);
 
-  // Cerrar al hacer clic fuera del contenido de la modal
   window.addEventListener("click", (e) => {
     if (e.target === modal) {
       closeGuide();
     }
   });
 
-  // Cerrar con la tecla ESC
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && modal.style.display === "flex") {
       closeGuide();
@@ -399,7 +519,7 @@ function setupParameterGuide() {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// EDITOR DE MÁSCARA (MODAL)
+// EDITOR INTERACTIVO DE MÁSCARA (MODAL)
 // ──────────────────────────────────────────────────────────────────────────────
 
 function setupMaskEditor() {
@@ -412,21 +532,23 @@ function setupMaskEditor() {
 
   bgCanvas = document.getElementById("editor-bg-canvas");
   paintCanvas = document.getElementById("editor-paint-canvas");
+  if (!paintCanvas || !bgCanvas) return;
   ctxPaint = paintCanvas.getContext("2d");
 
-  // Crear/obtener cursor personalizado
   const editorContainer = document.querySelector(".editor-canvas-container");
   let brushCursor = document.getElementById("editor-brush-cursor");
-  if (!brushCursor) {
+  if (!brushCursor && editorContainer) {
     brushCursor = document.createElement("div");
     brushCursor.id = "editor-brush-cursor";
     editorContainer.appendChild(brushCursor);
   }
 
-  btnPaint.addEventListener("click", () => {
-    if (!imgOriginal) return;
-    openMaskModal();
-  });
+  if (btnPaint) {
+    btnPaint.addEventListener("click", () => {
+      if (!imgOriginal) return;
+      openMaskModal();
+    });
+  }
 
   const btnEditMask = document.getElementById("btn-edit-mask");
   if (btnEditMask) {
@@ -437,44 +559,48 @@ function setupMaskEditor() {
     });
   }
 
-  btnClose.addEventListener("click", closeModal);
-  btnCancel.addEventListener("click", closeModal);
+  if (btnClose) btnClose.addEventListener("click", closeModal);
+  if (btnCancel) btnCancel.addEventListener("click", closeModal);
 
-  btnSave.addEventListener("click", () => {
-    // Exportar el canvas de pintura a una imagen
-    const dataURL = paintCanvas.toDataURL("image/png");
+  if (btnSave) {
+    btnSave.addEventListener("click", () => {
+      const dataURL = paintCanvas.toDataURL("image/png");
 
-    const img = new Image();
-    img.onload = () => {
-      const preview = document.getElementById("preview-mask");
-      preview.innerHTML = "";
-      preview.appendChild(img.cloneNode());
-      preview.style.display = "block";
+      const img = new Image();
+      img.onload = () => {
+        const preview = document.getElementById("preview-mask");
+        if (preview) {
+          preview.innerHTML = "";
+          preview.appendChild(img.cloneNode(true));
+          preview.style.display = "block";
+        }
 
-      imgMask = img;
-      log("Máscara generada en el editor.", "success");
-      checkReadyToProcess();
+        imgMask = img;
+        log("Máscara generada en el editor.", "success");
+        checkReadyToProcess();
 
-      // Mostrar botones de eliminar y editar
-      const btnRemove = document.querySelector("#dz-mask .btn-remove-file");
-      if (btnRemove) btnRemove.style.display = "flex";
-      const btnEdit = document.querySelector("#dz-mask .btn-edit-mask");
-      if (btnEdit) btnEdit.style.display = "flex";
+        const btnRemove = document.querySelector("#dz-mask .btn-remove-file");
+        if (btnRemove) btnRemove.style.display = "flex";
+        const btnEdit = document.querySelector("#dz-mask .btn-edit-mask");
+        if (btnEdit) btnEdit.style.display = "flex";
 
-      closeModal();
-    };
-    img.src = dataURL;
-  });
+        closeModal();
+      };
+      img.src = dataURL;
+    });
+  }
 
-  btnClear.addEventListener("click", async () => {
-    const confirmed = await showCustomConfirm(
-      "¿Seguro que deseas borrar toda la máscara pintada?",
-    );
-    if (confirmed) {
-      saveUndoState();
-      ctxPaint.clearRect(0, 0, paintCanvas.width, paintCanvas.height);
-    }
-  });
+  if (btnClear) {
+    btnClear.addEventListener("click", async () => {
+      const confirmed = await showCustomConfirm(
+        "¿Seguro que deseas borrar toda la máscara pintada?",
+      );
+      if (confirmed) {
+        saveUndoState();
+        ctxPaint.clearRect(0, 0, paintCanvas.width, paintCanvas.height);
+      }
+    });
+  }
 
   // Herramientas Pincel / Borrador / Mover
   const btnBrush = document.getElementById("editor-tool-brush");
@@ -483,30 +609,36 @@ function setupMaskEditor() {
   const brushSizeSlider = document.getElementById("editor-brush-size");
   const brushSizeVal = document.getElementById("editor-val-brush-size");
   const brushPreview = document.getElementById("brush-preview");
-
   const opacitySlider = document.getElementById("editor-opacity");
   const opacityVal = document.getElementById("editor-val-opacity");
 
-  btnBrush.addEventListener("click", () => {
-    currentTool = "brush";
-    setActiveToolButton(btnBrush);
-    updateCursor();
-  });
+  if (btnBrush) {
+    btnBrush.addEventListener("click", () => {
+      currentTool = "brush";
+      setActiveToolButton(btnBrush);
+      updateCursor();
+    });
+  }
 
-  btnEraser.addEventListener("click", () => {
-    currentTool = "eraser";
-    setActiveToolButton(btnEraser);
-    updateCursor();
-  });
+  if (btnEraser) {
+    btnEraser.addEventListener("click", () => {
+      currentTool = "eraser";
+      setActiveToolButton(btnEraser);
+      updateCursor();
+    });
+  }
 
-  btnPan.addEventListener("click", () => {
-    currentTool = "pan";
-    setActiveToolButton(btnPan);
-    updateCursor();
-  });
+  if (btnPan) {
+    btnPan.addEventListener("click", () => {
+      currentTool = "pan";
+      setActiveToolButton(btnPan);
+      updateCursor();
+    });
+  }
 
   function setActiveToolButton(activeBtn) {
     [btnBrush, btnEraser, btnPan].forEach((btn) => {
+      if (!btn) return;
       if (btn === activeBtn) {
         btn.classList.add("active", "btn-primary");
         btn.classList.remove("btn-secondary");
@@ -517,31 +649,33 @@ function setupMaskEditor() {
     });
   }
 
-  brushSizeSlider.addEventListener("input", () => {
-    brushSize = parseInt(brushSizeSlider.value);
-    brushSizeVal.innerText = brushSize;
-    updateBrushPreview();
-  });
+  if (brushSizeSlider) {
+    brushSizeSlider.addEventListener("input", () => {
+      brushSize = parseInt(brushSizeSlider.value);
+      if (brushSizeVal) brushSizeVal.innerText = brushSize;
+      updateBrushPreview();
+    });
+  }
 
   function updateBrushPreview() {
-    // Escalar la vista previa del pincel para que quepa en el contenedor de 50px sin desplazar el menú
+    if (!brushPreview) return;
     const visualSize = Math.max(2, (brushSize / 100) * 46);
     brushPreview.style.width = visualSize + "px";
     brushPreview.style.height = visualSize + "px";
   }
 
-  opacitySlider.addEventListener("input", () => {
-    const opacity = parseFloat(opacitySlider.value);
-    opacityVal.innerText = opacity.toFixed(1);
-    paintCanvas.style.opacity = opacity;
-  });
+  if (opacitySlider) {
+    opacitySlider.addEventListener("input", () => {
+      const opacity = parseFloat(opacitySlider.value);
+      if (opacityVal) opacityVal.innerText = opacity.toFixed(1);
+      paintCanvas.style.opacity = opacity;
+    });
+  }
 
-  // Desactivar el menú contextual del clic derecho
   paintCanvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
-  // Configurar dibujo y arrastre (pan) sobre el canvas
+  // Eventos de ratón para dibujo y paneo
   paintCanvas.addEventListener("mousedown", (e) => {
-    // Paneo: clic derecho, clic rueda central, o herramienta mover activa, o tecla espacio presionada
     if (
       e.button === 2 ||
       e.button === 1 ||
@@ -556,7 +690,6 @@ function setupMaskEditor() {
       return;
     }
 
-    // Clic izquierdo: dibujo
     if (e.button === 0) {
       saveUndoState();
       isDrawing = true;
@@ -568,7 +701,6 @@ function setupMaskEditor() {
   });
 
   paintCanvas.addEventListener("mousemove", (e) => {
-    // Actualizar posición del cursor del pincel
     updateBrushCursorPosition(e);
 
     if (editorIsPanning) {
@@ -609,7 +741,7 @@ function setupMaskEditor() {
   });
 
   paintCanvas.addEventListener("mouseleave", () => {
-    brushCursor.style.display = "none";
+    if (brushCursor) brushCursor.style.display = "none";
   });
 
   window.addEventListener("mouseup", () => {
@@ -620,29 +752,31 @@ function setupMaskEditor() {
     isDrawing = false;
   });
 
-  // Zoom con rueda en el contenedor de máscara
-  editorContainer.addEventListener("wheel", (e) => {
-    e.preventDefault();
+  if (editorContainer) {
+    editorContainer.addEventListener("wheel", (e) => {
+      e.preventDefault();
 
-    const rect = editorContainer.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
+      const rect = editorContainer.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
 
-    const localX = (mouseX - editorPanX) / editorScale;
-    const localY = (mouseY - editorPanY) / editorScale;
+      const localX = (mouseX - editorPanX) / editorScale;
+      const localY = (mouseY - editorPanY) / editorScale;
 
-    const zoomFactor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-    editorScale *= zoomFactor;
-    editorScale = Math.min(Math.max(0.15, editorScale), 20);
+      const zoomFactor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      editorScale *= zoomFactor;
+      editorScale = Math.min(Math.max(0.15, editorScale), 20);
 
-    editorPanX = mouseX - localX * editorScale;
-    editorPanY = mouseY - localY * editorScale;
+      editorPanX = mouseX - localX * editorScale;
+      editorPanY = mouseY - localY * editorScale;
 
-    updateEditorTransform();
-    updateBrushCursorPosition(e);
-  });
+      updateEditorTransform();
+      updateBrushCursorPosition(e);
+    });
+  }
 
   function updateBrushCursorPosition(e) {
+    if (!brushCursor) return;
     if (currentTool === "pan" || spacePressed || editorIsPanning) {
       brushCursor.style.display = "none";
       return;
@@ -652,7 +786,6 @@ function setupMaskEditor() {
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
 
-    // Solo mostrar si el puntero está exactamente sobre el canvas de pintura
     if (e.target !== paintCanvas) {
       brushCursor.style.display = "none";
       return;
@@ -668,7 +801,7 @@ function setupMaskEditor() {
     brushCursor.style.display = "block";
   }
 
-  // Soporte táctil
+  // Soporte Táctil
   paintCanvas.addEventListener("touchstart", (e) => {
     if (e.touches.length > 1) return;
     if (currentTool === "pan" || spacePressed) {
@@ -726,21 +859,19 @@ function setupMaskEditor() {
 
 function openMaskModal() {
   const modal = document.getElementById("mask-modal");
+  if (!modal) return;
   modal.style.display = "flex";
 
-  // Reiniciar pila de deshacer al abrir
   undoStack = [];
 
   const imgWidth = imgOriginal.naturalWidth;
   const imgHeight = imgOriginal.naturalHeight;
 
-  // Establecer la resolución interna de los canvases idéntica a la imagen
   bgCanvas.width = imgWidth;
   bgCanvas.height = imgHeight;
   paintCanvas.width = imgWidth;
   paintCanvas.height = imgHeight;
 
-  // Ajustar el tamaño inicial del canvas dentro del área visible de 860x420
   const containerWidth = 860;
   const containerHeight = 420;
   const scaleX = containerWidth / imgWidth;
@@ -750,32 +881,29 @@ function openMaskModal() {
   editorDisplayW = imgWidth * displayScale;
   editorDisplayH = imgHeight * displayScale;
 
-  // Configurar dimensiones de estilo base (antes del zoom)
   bgCanvas.style.width = editorDisplayW + "px";
   bgCanvas.style.height = editorDisplayH + "px";
   paintCanvas.style.width = editorDisplayW + "px";
   paintCanvas.style.height = editorDisplayH + "px";
 
   const wrapper = paintCanvas.parentNode;
-  wrapper.style.width = editorDisplayW + "px";
-  wrapper.style.height = editorDisplayH + "px";
+  if (wrapper) {
+    wrapper.style.width = editorDisplayW + "px";
+    wrapper.style.height = editorDisplayH + "px";
+  }
 
-  // Centrar inicialmente el canvas wrapper usando translate
   editorScale = 1;
   editorPanX = (containerWidth - editorDisplayW) / 2;
   editorPanY = (containerHeight - editorDisplayH) / 2;
 
   updateEditorTransform();
 
-  // Dibujar la imagen original en el fondo
   const ctxBg = bgCanvas.getContext("2d");
   ctxBg.drawImage(imgOriginal, 0, 0);
 
-  // Si ya existe una máscara cargada, pintarla inicialmente en el editor
   ctxPaint.clearRect(0, 0, paintCanvas.width, paintCanvas.height);
   if (imgMask) {
     try {
-      // Conversión de fondo negro a transparente para permitir la edición
       const tempCanvas = document.createElement("canvas");
       tempCanvas.width = paintCanvas.width;
       tempCanvas.height = paintCanvas.height;
@@ -804,12 +932,12 @@ function openMaskModal() {
           const g = data[i + 1];
           const b = data[i + 2];
           if (r < 50 && g < 50 && b < 50) {
-            data[i + 3] = 0; // Negro -> Transparente
+            data[i + 3] = 0;
           } else {
             data[i] = 255;
             data[i + 1] = 255;
             data[i + 2] = 255;
-            data[i + 3] = 255; // Blanco sólido
+            data[i + 3] = 255;
           }
         }
         tempCtx.putImageData(imgData, 0, 0);
@@ -817,7 +945,7 @@ function openMaskModal() {
 
       ctxPaint.drawImage(tempCanvas, 0, 0);
     } catch (e) {
-      console.error("Error drawing mask to canvas:", e);
+      console.error("Error al cargar la máscara en el lienzo del editor:", e);
       try {
         ctxPaint.drawImage(
           imgMask,
@@ -826,31 +954,32 @@ function openMaskModal() {
           paintCanvas.width,
           paintCanvas.height,
         );
-      } catch (err) {}
+      } catch (_) {}
     }
   }
 
-  // Inicializar visualización del pincel
-  brushSize = parseInt(document.getElementById("editor-brush-size").value);
+  const brushSizeElem = document.getElementById("editor-brush-size");
+  if (brushSizeElem) brushSize = parseInt(brushSizeElem.value);
   const brushPreview = document.getElementById("brush-preview");
-  const visualSize = Math.max(2, (brushSize / 100) * 46);
-  brushPreview.style.width = visualSize + "px";
-  brushPreview.style.height = visualSize + "px";
+  if (brushPreview) {
+    const visualSize = Math.max(2, (brushSize / 100) * 46);
+    brushPreview.style.width = visualSize + "px";
+    brushPreview.style.height = visualSize + "px";
+  }
 
-  // Inicializar opacidad de la máscara
   const opacitySlider = document.getElementById("editor-opacity");
   const opacityVal = document.getElementById("editor-val-opacity");
-  opacitySlider.value = 0.7;
-  opacityVal.innerText = "0.7";
+  if (opacitySlider) opacitySlider.value = 0.7;
+  if (opacityVal) opacityVal.innerText = "0.7";
   paintCanvas.style.opacity = 0.7;
 
-  // Restaurar a la herramienta pincel por defecto
   const btnBrush = document.getElementById("editor-tool-brush");
   currentTool = "brush";
 
   const btnEraser = document.getElementById("editor-tool-eraser");
   const btnPan = document.getElementById("editor-tool-pan");
   [btnBrush, btnEraser, btnPan].forEach((btn) => {
+    if (!btn) return;
     if (btn === btnBrush) {
       btn.classList.add("active", "btn-primary");
       btn.classList.remove("btn-secondary");
@@ -864,12 +993,15 @@ function openMaskModal() {
 }
 
 function updateEditorTransform() {
-  const wrapper = paintCanvas.parentNode;
-  wrapper.style.transform = `translate(${editorPanX}px, ${editorPanY}px) scale(${editorScale})`;
+  const wrapper = paintCanvas ? paintCanvas.parentNode : null;
+  if (wrapper) {
+    wrapper.style.transform = `translate(${editorPanX}px, ${editorPanY}px) scale(${editorScale})`;
+  }
 }
 
 function closeModal() {
-  document.getElementById("mask-modal").style.display = "none";
+  const modal = document.getElementById("mask-modal");
+  if (modal) modal.style.display = "none";
   const brushCursor = document.getElementById("editor-brush-cursor");
   if (brushCursor) brushCursor.style.display = "none";
 }
@@ -889,11 +1021,9 @@ function getMousePos(e) {
   const mx = clientX - containerRect.left;
   const my = clientY - containerRect.top;
 
-  // Escalar hacia atrás restando la traslación y dividiendo entre la escala
   const displayX = (mx - editorPanX) / editorScale;
   const displayY = (my - editorPanY) / editorScale;
 
-  // Mapear de píxeles visuales base a píxeles nativos del canvas
   const scaleX = paintCanvas.width / editorDisplayW;
   const scaleY = paintCanvas.height / editorDisplayH;
 
@@ -901,50 +1031,6 @@ function getMousePos(e) {
     x: displayX * scaleX,
     y: displayY * scaleY,
   };
-}
-
-function startDrawing(e) {
-  isDrawing = true;
-  const pos = getMousePos(e);
-  lastX = pos.x;
-  lastY = pos.y;
-  drawDot(pos.x, pos.y);
-}
-
-function startDrawingTouch(e) {
-  e.preventDefault();
-  startDrawing(e);
-}
-
-function draw(e) {
-  if (!isDrawing) return;
-  const pos = getMousePos(e);
-
-  ctxPaint.beginPath();
-  ctxPaint.moveTo(lastX, lastY);
-  ctxPaint.lineTo(pos.x, pos.y);
-
-  if (currentTool === "eraser") {
-    ctxPaint.globalCompositeOperation = "destination-out";
-    ctxPaint.strokeStyle = "rgba(0,0,0,1)";
-    ctxPaint.lineWidth = brushSize;
-  } else {
-    ctxPaint.globalCompositeOperation = "source-over";
-    ctxPaint.strokeStyle = "#ffffff";
-    ctxPaint.lineWidth = brushSize;
-  }
-
-  ctxPaint.lineCap = "round";
-  ctxPaint.lineJoin = "round";
-  ctxPaint.stroke();
-
-  lastX = pos.x;
-  lastY = pos.y;
-}
-
-function drawTouch(e) {
-  e.preventDefault();
-  draw(e);
 }
 
 function drawDot(x, y) {
@@ -960,21 +1046,13 @@ function drawDot(x, y) {
   ctxPaint.fill();
 }
 
-function stopDrawing() {
-  isDrawing = false;
-}
-
-function yieldToUI() {
-  return new Promise((resolve) => setTimeout(resolve, 25));
-}
-
 // ──────────────────────────────────────────────────────────────────────────────
-// PROCESAMIENTO CON OPENCV.JS
+// PIPELINE PRINCIPAL DE PROCESAMIENTO EN CLIENTE (OPENCV.JS + WAIFU2X)
 // ──────────────────────────────────────────────────────────────────────────────
 
 async function processImages() {
   if (!openCvLoaded) {
-    alert("Abriendo OpenCV.js, espera que cargue.");
+    alert("Cargando motor OpenCV.js, por favor espera unos segundos.");
     return;
   }
 
@@ -982,9 +1060,11 @@ async function processImages() {
   log("Iniciando procesamiento de limpieza...", "info");
   await yieldToUI();
 
-  // Obtener parámetros
-  const colorMatch = document.getElementById("param-color-match").checked;
-  const colorMatchLocal = document.getElementById("param-color-local").checked;
+  // Lectura de parámetros de la UI
+  const colorMatch =
+    document.getElementById("param-color-match")?.checked ?? false;
+  const colorMatchLocal =
+    document.getElementById("param-color-local")?.checked ?? false;
   const enableHomography = document.getElementById("param-homography")
     ? document.getElementById("param-homography").checked
     : true;
@@ -994,41 +1074,118 @@ async function processImages() {
   const enableFallbackDirect = document.getElementById("param-fallback-direct")
     ? document.getElementById("param-fallback-direct").checked
     : false;
-  const method = document.getElementById("param-method").value;
-  const dilatePx = parseInt(document.getElementById("param-dilate").value);
-  const blurSigma = parseFloat(document.getElementById("param-blur").value);
+  const method = document.getElementById("param-method")?.value || "stats";
+  const dilatePx = parseInt(
+    document.getElementById("param-dilate")?.value || "10",
+  );
+  const blurSigma = parseFloat(
+    document.getElementById("param-blur")?.value || "3.0",
+  );
 
-  // Crear Matrices de OpenCV
+  // Parámetros de Waifu2x
+  const useWaifu2x = document.getElementById("param-waifu2x")
+    ? document.getElementById("param-waifu2x").checked
+    : false;
+  const waifu2xScale =
+    document.getElementById("param-waifu2x-scale")?.value || "2x";
+  const waifu2xNoise =
+    document.getElementById("param-waifu2x-noise")?.value || "2";
+  const waifu2xModel =
+    document.getElementById("param-waifu2x-model")?.value || "cunet";
+
+  // Variables de control de memoria OpenCV (se liberan en finalmente)
   let srcCover = null;
   let srcClean = null;
   let srcMask = null;
-  let grayCover = new cv.Mat();
-  let grayClean = new cv.Mat();
-  let maskGray = new cv.Mat();
-  let maskContext = new cv.Mat();
+  let grayCover = null;
+  let grayClean = null;
+  let maskGray = null;
+  let maskContext = null;
+  let orb = null;
+  let kpCover = null;
+  let desCover = null;
+  let kpClean = null;
+  let desClean = null;
+  let matcher = null;
+  let matches = null;
+  let allMatches = null;
+  let maskMatches = null;
+  let ptsClean = null;
+  let ptsCover = null;
+  let H_candidate = null;
+  let H = null;
+  let alignedClean = null;
+  let colorMatchedClean = null;
+  let blurredMask = null;
 
   try {
-    log("Cargando imágenes y máscara en memoria...", "info");
+    let cleanInputForCv = imgClean;
+
+    // Pasada opcional de Waifu2x antes de alineación
+    if (useWaifu2x && typeof Waifu2xEngine !== "undefined") {
+      log(
+        `Ejecutando Waifu2x en la imagen limpia (${waifu2xModel}, Ruido: ${waifu2xNoise}, Escala: ${waifu2xScale})...`,
+        "info",
+      );
+      await yieldToUI();
+      try {
+        cleanInputForCv = await Waifu2xEngine.processImage(
+          imgClean,
+          {
+            model: waifu2xModel,
+            noise: waifu2xNoise,
+            scale: waifu2xScale,
+            tileSize: 256,
+            overlap: 16,
+          },
+          (percent, statusMsg) => {
+            log(`[Waifu2x] ${statusMsg}`, "info");
+          },
+        );
+        log(
+          "Waifu2x finalizado correctamente del lado del cliente.",
+          "success",
+        );
+        await yieldToUI();
+      } catch (e) {
+        const errMsg =
+          e && (e.message || e.stack) ? e.message || e.stack : String(e);
+        log(`[-] Error al ejecutar Waifu2x: ${errMsg}`, "error");
+        log("[!] Continuando proceso con la imagen limpia original...", "info");
+        cleanInputForCv = imgClean;
+      }
+    }
+
+    log("Cargando imágenes y máscara en memoria WebAssembly...", "info");
     await yieldToUI();
 
     srcCover = cv.imread(imgOriginal);
-    srcClean = cv.imread(imgClean);
+    srcClean = cv.imread(cleanInputForCv);
     srcMask = cv.imread(imgMask);
 
+    grayCover = new cv.Mat();
+    grayClean = new cv.Mat();
     cv.cvtColor(srcCover, grayCover, cv.COLOR_RGBA2GRAY);
     cv.cvtColor(srcClean, grayClean, cv.COLOR_RGBA2GRAY);
 
-    // Procesar la Máscara al inicio para filtrado de contexto por cercanía
-    let dsize = new cv.Size(srcCover.cols, srcCover.rows);
+    // Lectura y preparación de la Máscara Gris
+    const dsize = new cv.Size(srcCover.cols, srcCover.rows);
+    maskGray = new cv.Mat();
+
     if (srcMask.channels() === 4) {
       let channels = new cv.MatVector();
       cv.split(srcMask, channels);
-      maskGray = channels.get(3).clone();
-      let meanVal = cv.mean(maskGray)[0];
+      let alphaChan = channels.get(3);
+      let meanVal = cv.mean(alphaChan)[0];
       if (meanVal > 250) {
         cv.cvtColor(srcMask, maskGray, cv.COLOR_RGBA2GRAY);
+      } else {
+        maskGray = alphaChan.clone();
       }
-      for (let i = 0; i < channels.size(); i++) channels.get(i).delete();
+      for (let i = 0; i < channels.size(); i++) {
+        let ch = channels.get(i);
+        safeDeleteCvObjects(ch);
+      }
       channels.delete();
     } else if (srcMask.channels() === 3) {
       cv.cvtColor(srcMask, maskGray, cv.COLOR_RGB2GRAY);
@@ -1043,21 +1200,22 @@ async function processImages() {
       maskGray = resizedMask;
     }
 
-    // Crear Zona de Contexto dilata (radio amplio alrededor de todas las zonas de texto)
+    // Zona de Contexto dilata (alrededor de zonas de texto)
+    maskContext = new cv.Mat();
     let kernelRadius = Math.max(15, Math.round(srcCover.cols / 40));
     let kernelSize = kernelRadius * 2 + 1;
-    let kernel = cv.Mat.ones(kernelSize, kernelSize, cv.CV_8U);
-    cv.dilate(maskGray, maskContext, kernel);
-    kernel.delete();
+    let kernelCtx = cv.Mat.ones(kernelSize, kernelSize, cv.CV_8U);
+    cv.dilate(maskGray, maskContext, kernelCtx);
+    kernelCtx.delete();
 
-    log("Detectando puntos de interés (ORB)...", "info");
+    log("Detectando puntos clave de alineación (ORB)...", "info");
     await yieldToUI();
 
-    let orb = new cv.ORB(10000);
-    let kpCover = new cv.KeyPointVector();
-    let desCover = new cv.Mat();
-    let kpClean = new cv.KeyPointVector();
-    let desClean = new cv.Mat();
+    orb = new cv.ORB(10000);
+    kpCover = new cv.KeyPointVector();
+    desCover = new cv.Mat();
+    kpClean = new cv.KeyPointVector();
+    desClean = new cv.Mat();
 
     orb.detectAndCompute(grayCover, new cv.Mat(), kpCover, desCover);
     orb.detectAndCompute(grayClean, new cv.Mat(), kpClean, desClean);
@@ -1068,13 +1226,10 @@ async function processImages() {
     );
     await yieldToUI();
 
-    let H = null;
-    let matcher = new cv.BFMatcher(cv.NORM_HAMMING);
-    let matches = new cv.DMatchVectorVector();
-    let allMatches = new cv.DMatchVector();
-    let maskMatches = new cv.DMatchVector();
-    let ptsClean = null;
-    let ptsCover = null;
+    matcher = new cv.BFMatcher(cv.NORM_HAMMING);
+    matches = new cv.DMatchVectorVector();
+    allMatches = new cv.DMatchVector();
+    maskMatches = new cv.DMatchVector();
 
     if (
       kpCover.size() >= 4 &&
@@ -1082,7 +1237,7 @@ async function processImages() {
       !desCover.empty() &&
       !desClean.empty()
     ) {
-      log("Buscando coincidencias de puntos...", "info");
+      log("Buscando coincidencias de puntos de control...", "info");
       await yieldToUI();
 
       matcher.knnMatch(desClean, desCover, matches, 2);
@@ -1095,7 +1250,7 @@ async function processImages() {
         if (m.distance < 0.8 * n.distance) {
           allMatches.push_back(m);
 
-          // Filtrar puntos que están cerca de cualquier zona de la máscara
+          // Filtrar coincidencia según cercanía a la Zona de Contexto de la máscara
           let ptCover = kpCover.get(m.trainIdx).pt;
           let cx = Math.floor(ptCover.x);
           let cy = Math.floor(ptCover.y);
@@ -1150,7 +1305,7 @@ async function processImages() {
         }
 
         let inlierMask = new cv.Mat();
-        let H_candidate = cv.findHomography(
+        H_candidate = cv.findHomography(
           ptsClean,
           ptsCover,
           cv.RANSAC,
@@ -1158,6 +1313,7 @@ async function processImages() {
           inlierMask,
         );
         let inliersCount = cv.countNonZero(inlierMask);
+        inlierMask.delete();
 
         log(`Inliers tras RANSAC: ${inliersCount}`, "info");
         await yieldToUI();
@@ -1192,25 +1348,26 @@ async function processImages() {
 
         if (isValidH) {
           H = H_candidate;
+          H_candidate = null;
           log(
             `Alineación por Homografía aplicada con éxito (${inliersCount} inliers).`,
             "success",
           );
         } else if (enableFallbackDirect) {
-          if (H_candidate) H_candidate.delete();
+          safeDeleteCvObjects(H_candidate);
+          H_candidate = null;
           log(
             `[!] Homografía inestable. Usando alineación directa 1:1 por opción activada.`,
             "info",
           );
         } else {
-          // Si el fallback 1:1 está desactivado por defecto, forzamos usar H_candidate
           H = H_candidate;
+          H_candidate = null;
           log(
             `[*] Homografía aplicada (${inliersCount} inliers, fallback 1:1 desactivado).`,
             "info",
           );
         }
-        inlierMask.delete();
       } else if (!enableHomography) {
         if (enableFallbackDirect) {
           log(
@@ -1248,7 +1405,7 @@ async function processImages() {
     }
     await yieldToUI();
 
-    // Matriz de identidad / escalado si se permitió el fallback directo 1:1
+    // Fallback a matriz de escalado directo 1:1 si no hay homografía
     if (!H && enableFallbackDirect) {
       H = new cv.Mat(3, 3, cv.CV_64F);
       let sx = srcCover.cols / srcClean.cols;
@@ -1273,7 +1430,7 @@ async function processImages() {
     log("Alineando perspectiva de la imagen limpia...", "info");
     await yieldToUI();
 
-    let alignedClean = new cv.Mat();
+    alignedClean = new cv.Mat();
     cv.warpPerspective(
       srcClean,
       alignedClean,
@@ -1285,7 +1442,7 @@ async function processImages() {
     );
 
     // Ajuste de Color (Color Match)
-    let colorMatchedClean = alignedClean.clone();
+    colorMatchedClean = alignedClean.clone();
     if (colorMatch || colorMatchLocal) {
       log(
         `Aplicando ajuste de color (Método: ${method}${colorMatchLocal ? " - Local" : ""})...`,
@@ -1305,13 +1462,11 @@ async function processImages() {
         contextMask = new cv.Mat();
         cv.bitwise_and(dilatedMask, invMask, contextMask);
 
-        kernel.delete();
-        dilatedMask.delete();
-        invMask.delete();
+        safeDeleteCvObjects(kernel, dilatedMask, invMask);
 
         let nz = cv.countNonZero(contextMask);
         if (nz < 100) {
-          contextMask.delete();
+          safeDeleteCvObjects(contextMask);
           contextMask = null;
           log(
             "Sin contexto suficiente cerca del texto. Usando estadísticas globales.",
@@ -1337,20 +1492,20 @@ async function processImages() {
 
       if (colorMatchLocal) {
         corrected.copyTo(colorMatchedClean, maskGray);
-        corrected.delete();
+        safeDeleteCvObjects(corrected);
       } else {
-        colorMatchedClean.delete();
+        safeDeleteCvObjects(colorMatchedClean);
         colorMatchedClean = corrected;
       }
 
-      if (contextMask) contextMask.delete();
+      if (contextMask) safeDeleteCvObjects(contextMask);
     }
 
-    // Difuminar la máscara para fusión suave de bordes
-    log("Difuminando bordes de fusión (GaussianBlur)...", "info");
+    // Suavizado gaussiano de la máscara para transición imperceptible
+    log("Difuminando bordes de la máscara (GaussianBlur)...", "info");
     await yieldToUI();
 
-    let blurredMask = new cv.Mat();
+    blurredMask = new cv.Mat();
     if (blurSigma > 0) {
       let ksize = new cv.Size(0, 0);
       cv.GaussianBlur(maskGray, blurredMask, ksize, blurSigma, blurSigma);
@@ -1358,7 +1513,7 @@ async function processImages() {
       blurredMask = maskGray.clone();
     }
 
-    // Mezclar las imágenes pixel a pixel usando JS de alta velocidad
+    // Mezcla final de píxeles en JavaScript mediante Uint8ClampedArray
     log("Mezclando imágenes finales...", "info");
     await yieldToUI();
 
@@ -1368,15 +1523,14 @@ async function processImages() {
 
     let resultData = new Uint8ClampedArray(coverData.length);
     for (let i = 0; i < coverData.length; i += 4) {
-      let m = maskData[i / 4] / 255.0; // canal simple del blur
+      let m = maskData[i / 4] / 255.0;
 
-      resultData[i] = coverData[i] * (1 - m) + cleanData[i] * m; // R
-      resultData[i + 1] = coverData[i + 1] * (1 - m) + cleanData[i + 1] * m; // G
-      resultData[i + 2] = coverData[i + 2] * (1 - m) + cleanData[i + 2] * m; // B
+      resultData[i] = coverData[i] * (1 - m) + cleanData[i] * m; // Canal R
+      resultData[i + 1] = coverData[i + 1] * (1 - m) + cleanData[i + 1] * m; // Canal G
+      resultData[i + 2] = coverData[i + 2] * (1 - m) + cleanData[i + 2] * m; // Canal B
       resultData[i + 3] = 255; // Alpha opaco
     }
 
-    // Renderizar el resultado en un canvas temporal para descargarlo y previsualizarlo
     let finalCanvas = document.createElement("canvas");
     finalCanvas.width = srcCover.cols;
     finalCanvas.height = srcCover.rows;
@@ -1385,55 +1539,67 @@ async function processImages() {
     let imgData = new ImageData(resultData, srcCover.cols, srcCover.rows);
     finalCtx.putImageData(imgData, 0, 0);
 
-    // Cargar en el visor
     const dataURL = finalCanvas.toDataURL("image/jpeg", 0.95);
-    document.getElementById("img-result-after").src = dataURL;
-    document.getElementById("img-result-before").src = imgOriginal.src;
-    document.getElementById("btn-download").href = dataURL;
+    const imgAfter = document.getElementById("img-result-after");
+    const imgBefore = document.getElementById("img-result-before");
+    if (imgAfter) imgAfter.src = dataURL;
+    if (imgBefore) imgBefore.src = imgOriginal.src;
 
-    // Mostrar visor
-    document.getElementById("section-result").style.display = "block";
+    const btnDownload = document.getElementById("btn-download");
+    if (btnDownload) {
+      btnDownload.onclick = (e) => {
+        e.preventDefault();
+        downloadCanvasAsOptimizedPng(
+          finalCanvas,
+          "portada_limpia_restaurada.png",
+        );
+      };
+    }
+
+    const secResult = document.getElementById("section-result");
+    if (secResult) secResult.style.display = "block";
     log("¡Procesamiento finalizado con éxito!", "success");
 
-    // Inicializar tamaño y zoom del visor
     setTimeout(() => {
       initResultViewerSize();
     }, 100);
-
-    // Limpieza de objetos OpenCV.js del procesamiento principal
-    orb.delete();
-    kpCover.delete();
-    desCover.delete();
-    kpClean.delete();
-    desClean.delete();
-    matcher.delete();
-    matches.delete();
-    allMatches.delete();
-    maskMatches.delete();
-    maskContext.delete();
-    if (ptsClean) ptsClean.delete();
-    if (ptsCover) ptsCover.delete();
-    H.delete();
-    alignedClean.delete();
-    maskGray.delete();
-    colorMatchedClean.delete();
-    blurredMask.delete();
   } catch (err) {
-    log(`Error: ${err.message}`, "error");
-    alert(`Error al procesar: ${err.message}`);
+    const errMsg = err && err.message ? err.message : String(err);
+    log(`Error: ${errMsg}`, "error");
+    alert(`Error al procesar: ${errMsg}`);
     console.error(err);
   } finally {
-    // Liberar Mats básicas siempre
-    if (srcCover) srcCover.delete();
-    if (srcClean) srcClean.delete();
-    if (srcMask) srcMask.delete();
-    grayCover.delete();
-    grayClean.delete();
+    // Liberación estricta de memoria WebAssembly de OpenCV.js
+    safeDeleteCvObjects(
+      srcCover,
+      srcClean,
+      srcMask,
+      grayCover,
+      grayClean,
+      maskGray,
+      maskContext,
+      orb,
+      kpCover,
+      desCover,
+      kpClean,
+      desClean,
+      matcher,
+      matches,
+      allMatches,
+      maskMatches,
+      ptsClean,
+      ptsCover,
+      H_candidate,
+      H,
+      alignedClean,
+      colorMatchedClean,
+      blurredMask,
+    );
   }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// ALGORITMOS DE AJUSTE DE COLOR EN OPENCV.JS
+// ALGORITMOS DE AJUSTE DE COLOR (RGB, LAB REINHARD, LUT)
 // ──────────────────────────────────────────────────────────────────────────────
 
 function matchColorStats(src, ref, mask) {
@@ -1441,210 +1607,211 @@ function matchColorStats(src, ref, mask) {
   let stddevSrc = new cv.Mat();
   let meanRef = new cv.Mat();
   let stddevRef = new cv.Mat();
-
   let activeMask = mask || new cv.Mat();
-
-  cv.meanStdDev(src, meanSrc, stddevSrc, activeMask);
-  cv.meanStdDev(ref, meanRef, stddevRef, activeMask);
-
   let srcChannels = new cv.MatVector();
-  cv.split(src, srcChannels);
-
-  for (let c = 0; c < 3; c++) {
-    let s_mean = meanSrc.data64F[c];
-    let s_std = stddevSrc.data64F[c] + 1e-6;
-    let r_mean = meanRef.data64F[c];
-    let r_std = stddevRef.data64F[c] + 1e-6;
-
-    let ch = srcChannels.get(c);
-    let scale = r_std / s_std;
-    let shift = -s_mean * scale + r_mean;
-
-    let correctedCh = new cv.Mat();
-    ch.convertTo(correctedCh, -1, scale, shift);
-    srcChannels.set(c, correctedCh);
-
-    ch.delete();
-    correctedCh.delete();
-  }
-
   let result = new cv.Mat();
-  cv.merge(srcChannels, result);
 
-  // Limpieza
-  meanSrc.delete();
-  stddevSrc.delete();
-  meanRef.delete();
-  stddevRef.delete();
-  if (!mask) activeMask.delete();
-  for (let i = 0; i < srcChannels.size(); i++) srcChannels.get(i).delete();
-  srcChannels.delete();
+  try {
+    cv.meanStdDev(src, meanSrc, stddevSrc, activeMask);
+    cv.meanStdDev(ref, meanRef, stddevRef, activeMask);
 
-  return result;
+    cv.split(src, srcChannels);
+
+    for (let c = 0; c < 3; c++) {
+      let s_mean = meanSrc.data64F[c];
+      let s_std = stddevSrc.data64F[c] + 1e-6;
+      let r_mean = meanRef.data64F[c];
+      let r_std = stddevRef.data64F[c] + 1e-6;
+
+      let ch = srcChannels.get(c);
+      let scale = r_std / s_std;
+      let shift = -s_mean * scale + r_mean;
+
+      let correctedCh = new cv.Mat();
+      ch.convertTo(correctedCh, -1, scale, shift);
+      srcChannels.set(c, correctedCh);
+
+      safeDeleteCvObjects(ch, correctedCh);
+    }
+
+    cv.merge(srcChannels, result);
+    return result;
+  } finally {
+    safeDeleteCvObjects(meanSrc, stddevSrc, meanRef, stddevRef);
+    if (!mask && activeMask) safeDeleteCvObjects(activeMask);
+    for (let i = 0; i < srcChannels.size(); i++) {
+      let ch = srcChannels.get(i);
+      safeDeleteCvObjects(ch);
+    }
+    srcChannels.delete();
+  }
 }
 
 function matchColorReinhard(src, ref, mask) {
   let srcRGB = new cv.Mat();
   let refRGB = new cv.Mat();
-  cv.cvtColor(src, srcRGB, cv.COLOR_RGBA2RGB);
-  cv.cvtColor(ref, refRGB, cv.COLOR_RGBA2RGB);
-
   let srcLab = new cv.Mat();
   let refLab = new cv.Mat();
-  cv.cvtColor(srcRGB, srcLab, cv.COLOR_RGB2Lab);
-  cv.cvtColor(refRGB, refLab, cv.COLOR_RGB2Lab);
-
   let meanSrc = new cv.Mat();
   let stddevSrc = new cv.Mat();
   let meanRef = new cv.Mat();
   let stddevRef = new cv.Mat();
   let activeMask = mask || new cv.Mat();
-
-  cv.meanStdDev(srcLab, meanSrc, stddevSrc, activeMask);
-  cv.meanStdDev(refLab, meanRef, stddevRef, activeMask);
-
   let labChannels = new cv.MatVector();
-  cv.split(srcLab, labChannels);
-
-  for (let c = 0; c < 3; c++) {
-    let s_mean = meanSrc.data64F[c];
-    let s_std = stddevSrc.data64F[c] + 1e-6;
-    let r_mean = meanRef.data64F[c];
-    let r_std = stddevRef.data64F[c] + 1e-6;
-
-    let ch = labChannels.get(c);
-    let scale = r_std / s_std;
-    let shift = -s_mean * scale + r_mean;
-
-    let correctedCh = new cv.Mat();
-    ch.convertTo(correctedCh, -1, scale, shift);
-    labChannels.set(c, correctedCh);
-
-    ch.delete();
-    correctedCh.delete();
-  }
-
   let correctedLab = new cv.Mat();
-  cv.merge(labChannels, correctedLab);
-
   let correctedRGB = new cv.Mat();
-  cv.cvtColor(correctedLab, correctedRGB, cv.COLOR_Lab2RGB);
-
-  // Unir con alpha original
   let srcChannels = new cv.MatVector();
-  cv.split(src, srcChannels);
-  let alpha = srcChannels.get(3);
-
   let rgbChannels = new cv.MatVector();
-  cv.split(correctedRGB, rgbChannels);
-  rgbChannels.push_back(alpha);
-
   let result = new cv.Mat();
-  cv.merge(rgbChannels, result);
 
-  // Limpieza
-  srcRGB.delete();
-  refRGB.delete();
-  srcLab.delete();
-  refLab.delete();
-  meanSrc.delete();
-  stddevSrc.delete();
-  meanRef.delete();
-  stddevRef.delete();
-  if (!mask) activeMask.delete();
-  correctedLab.delete();
-  correctedRGB.delete();
-  alpha.delete();
-  for (let i = 0; i < labChannels.size(); i++) labChannels.get(i).delete();
-  labChannels.delete();
-  for (let i = 0; i < rgbChannels.size(); i++) rgbChannels.get(i).delete();
-  rgbChannels.delete();
-  for (let i = 0; i < srcChannels.size(); i++) srcChannels.get(i).delete();
-  srcChannels.delete();
+  try {
+    cv.cvtColor(src, srcRGB, cv.COLOR_RGBA2RGB);
+    cv.cvtColor(ref, refRGB, cv.COLOR_RGBA2RGB);
 
-  return result;
+    cv.cvtColor(srcRGB, srcLab, cv.COLOR_RGB2Lab);
+    cv.cvtColor(refRGB, refLab, cv.COLOR_RGB2Lab);
+
+    cv.meanStdDev(srcLab, meanSrc, stddevSrc, activeMask);
+    cv.meanStdDev(refLab, meanRef, stddevRef, activeMask);
+
+    cv.split(srcLab, labChannels);
+
+    for (let c = 0; c < 3; c++) {
+      let s_mean = meanSrc.data64F[c];
+      let s_std = stddevSrc.data64F[c] + 1e-6;
+      let r_mean = meanRef.data64F[c];
+      let r_std = stddevRef.data64F[c] + 1e-6;
+
+      let ch = labChannels.get(c);
+      let scale = r_std / s_std;
+      let shift = -s_mean * scale + r_mean;
+
+      let correctedCh = new cv.Mat();
+      ch.convertTo(correctedCh, -1, scale, shift);
+      labChannels.set(c, correctedCh);
+
+      safeDeleteCvObjects(ch, correctedCh);
+    }
+
+    cv.merge(labChannels, correctedLab);
+    cv.cvtColor(correctedLab, correctedRGB, cv.COLOR_Lab2RGB);
+
+    cv.split(src, srcChannels);
+    let alpha = srcChannels.get(3);
+
+    cv.split(correctedRGB, rgbChannels);
+    rgbChannels.push_back(alpha);
+
+    cv.merge(rgbChannels, result);
+    safeDeleteCvObjects(alpha);
+    return result;
+  } finally {
+    safeDeleteCvObjects(
+      srcRGB,
+      refRGB,
+      srcLab,
+      refLab,
+      meanSrc,
+      stddevSrc,
+      meanRef,
+      stddevRef,
+      correctedLab,
+      correctedRGB,
+    );
+    if (!mask && activeMask) safeDeleteCvObjects(activeMask);
+    for (let i = 0; i < labChannels.size(); i++) {
+      let ch = labChannels.get(i);
+      safeDeleteCvObjects(ch);
+    }
+    labChannels.delete();
+    for (let i = 0; i < rgbChannels.size(); i++) {
+      let ch = rgbChannels.get(i);
+      safeDeleteCvObjects(ch);
+    }
+    rgbChannels.delete();
+    for (let i = 0; i < srcChannels.size(); i++) {
+      let ch = srcChannels.get(i);
+      safeDeleteCvObjects(ch);
+    }
+    srcChannels.delete();
+  }
 }
 
 function matchColorLut(src, ref, mask) {
   let srcChannels = new cv.MatVector();
-  cv.split(src, srcChannels);
-
   let refChannels = new cv.MatVector();
-  cv.split(ref, refChannels);
-
   let activeMask = mask || new cv.Mat();
-
-  for (let c = 0; c < 3; c++) {
-    let sCh = srcChannels.get(c);
-    let rCh = refChannels.get(c);
-
-    let sHist = new cv.Mat();
-    let rHist = new cv.Mat();
-
-    let sVec = new cv.MatVector();
-    sVec.push_back(sCh);
-    let rVec = new cv.MatVector();
-    rVec.push_back(rCh);
-
-    cv.calcHist(sVec, [0], activeMask, sHist, [256], [0, 256]);
-    cv.calcHist(rVec, [0], activeMask, rHist, [256], [0, 256]);
-
-    // CDF
-    let sCdf = new Float64Array(256);
-    let rCdf = new Float64Array(256);
-    let sSum = 0,
-      rSum = 0;
-    for (let i = 0; i < 256; i++) {
-      sSum += sHist.data32F[i];
-      sCdf[i] = sSum;
-
-      rSum += rHist.data32F[i];
-      rCdf[i] = rSum;
-    }
-
-    let sMax = sCdf[255] + 1e-6;
-    let rMax = rCdf[255] + 1e-6;
-    for (let i = 0; i < 256; i++) {
-      sCdf[i] /= sMax;
-      rCdf[i] /= rMax;
-    }
-
-    // Mapeo LUT
-    let lut = new cv.Mat(1, 256, cv.CV_8U);
-    let j = 0;
-    for (let i = 0; i < 256; i++) {
-      while (j < 255 && rCdf[j] < sCdf[i]) {
-        j++;
-      }
-      lut.data[i] = j;
-    }
-
-    let correctedCh = new cv.Mat();
-    cv.LUT(sCh, lut, correctedCh);
-    srcChannels.set(c, correctedCh);
-
-    // Limpieza de este canal
-    sHist.delete();
-    rHist.delete();
-    sVec.delete();
-    rVec.delete();
-    lut.delete();
-    sCh.delete();
-    rCh.delete();
-    correctedCh.delete();
-  }
-
   let result = new cv.Mat();
-  cv.merge(srcChannels, result);
 
-  // Limpieza
-  if (!mask) activeMask.delete();
-  for (let i = 0; i < srcChannels.size(); i++) srcChannels.get(i).delete();
-  srcChannels.delete();
-  for (let i = 0; i < refChannels.size(); i++) refChannels.get(i).delete();
-  refChannels.delete();
+  try {
+    cv.split(src, srcChannels);
+    cv.split(ref, refChannels);
 
-  return result;
+    for (let c = 0; c < 3; c++) {
+      let sCh = srcChannels.get(c);
+      let rCh = refChannels.get(c);
+
+      let sHist = new cv.Mat();
+      let rHist = new cv.Mat();
+
+      let sVec = new cv.MatVector();
+      sVec.push_back(sCh);
+      let rVec = new cv.MatVector();
+      rVec.push_back(rCh);
+
+      cv.calcHist(sVec, [0], activeMask, sHist, [256], [0, 256]);
+      cv.calcHist(rVec, [0], activeMask, rHist, [256], [0, 256]);
+
+      let sCdf = new Float64Array(256);
+      let rCdf = new Float64Array(256);
+      let sSum = 0,
+        rSum = 0;
+      for (let i = 0; i < 256; i++) {
+        sSum += sHist.data32F[i];
+        sCdf[i] = sSum;
+
+        rSum += rHist.data32F[i];
+        rCdf[i] = rSum;
+      }
+
+      let sMax = sCdf[255] + 1e-6;
+      let rMax = rCdf[255] + 1e-6;
+      for (let i = 0; i < 256; i++) {
+        sCdf[i] /= sMax;
+        rCdf[i] /= rMax;
+      }
+
+      let lut = new cv.Mat(1, 256, cv.CV_8U);
+      let j = 0;
+      for (let i = 0; i < 256; i++) {
+        while (j < 255 && rCdf[j] < sCdf[i]) {
+          j++;
+        }
+        lut.data[i] = j;
+      }
+
+      let correctedCh = new cv.Mat();
+      cv.LUT(sCh, lut, correctedCh);
+      srcChannels.set(c, correctedCh);
+
+      safeDeleteCvObjects(sHist, rHist, sVec, rVec, lut, sCh, rCh, correctedCh);
+    }
+
+    cv.merge(srcChannels, result);
+    return result;
+  } finally {
+    if (!mask && activeMask) safeDeleteCvObjects(activeMask);
+    for (let i = 0; i < srcChannels.size(); i++) {
+      let ch = srcChannels.get(i);
+      safeDeleteCvObjects(ch);
+    }
+    srcChannels.delete();
+    for (let i = 0; i < refChannels.size(); i++) {
+      let ch = refChannels.get(i);
+      safeDeleteCvObjects(ch);
+    }
+    refChannels.delete();
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -1658,40 +1825,39 @@ function setupResultViewer() {
   imgResultBefore = document.getElementById("img-result-before");
   imgResultAfter = document.getElementById("img-result-after");
 
-  document.getElementById("btn-reset-view").addEventListener("click", () => {
-    initResultViewerSize();
-  });
+  if (!compareViewer || !viewerPanZoom || !compareHandle) return;
 
-  // --- Zoom con Rueda ---
+  const btnReset = document.getElementById("btn-reset-view");
+  if (btnReset) {
+    btnReset.addEventListener("click", () => {
+      initResultViewerSize();
+    });
+  }
+
+  // Zoom con rueda del ratón
   compareViewer.addEventListener("wheel", (e) => {
-    e.preventDefault(); // Evitar scroll de la página
+    e.preventDefault();
 
     const rect = compareViewer.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    // Coordenadas locales antes del zoom
     const localX = (mouseX - panX) / scale;
     const localY = (mouseY - panY) / scale;
 
-    // Multiplicador de zoom
     const zoomFactor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
     scale *= zoomFactor;
-
-    // Límites de zoom
     scale = Math.min(Math.max(0.1, scale), 20);
 
-    // Ajustar Pan para que el zoom sea centrado en el ratón
     panX = mouseX - localX * scale;
     panY = mouseY - localY * scale;
 
     updateTransform();
   });
 
-  // --- Paneo (Arrastre de Fondo) ---
+  // Paneo (Arrastre de fondo)
   compareViewer.addEventListener("mousedown", (e) => {
     if (e.target === compareHandle || compareHandle.contains(e.target)) {
-      // Si pulsamos el slider, es para deslizar, no para arrastrar
       return;
     }
 
@@ -1709,7 +1875,6 @@ function setupResultViewer() {
     }
 
     if (isSliding) {
-      // Deslizador de comparación en espacio de pantalla estático (independiente del zoom)
       const rect = compareViewer.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       let percent = (mouseX / rect.width) * 100;
@@ -1728,7 +1893,6 @@ function setupResultViewer() {
     isSliding = false;
   });
 
-  // Drag del handle de comparación
   compareHandle.addEventListener("mousedown", (e) => {
     e.stopPropagation();
     isSliding = true;
@@ -1736,28 +1900,24 @@ function setupResultViewer() {
 }
 
 function initResultViewerSize() {
-  if (!imgOriginal) return;
+  if (!imgOriginal || !compareViewer || !viewerPanZoom) return;
 
   const imgW = imgOriginal.naturalWidth;
   const imgH = imgOriginal.naturalHeight;
 
-  // Configurar tamaño del contenedor al de la imagen nativa
   viewerPanZoom.style.width = imgW + "px";
   viewerPanZoom.style.height = imgH + "px";
 
   const viewerW = compareViewer.clientWidth;
   const viewerH = compareViewer.clientHeight;
 
-  // Escala inicial para ajustar la imagen al visor
   const scaleX = viewerW / imgW;
   const scaleY = viewerH / imgH;
   scale = Math.min(scaleX, scaleY);
 
-  // Centrar la imagen en el visor
   panX = (viewerW - imgW * scale) / 2;
   panY = (viewerH - imgH * scale) / 2;
 
-  // Restablecer slider al 50%
   sliderPercent = 50;
 
   updateTransform();
@@ -1765,37 +1925,42 @@ function initResultViewerSize() {
 }
 
 function updateTransform() {
+  if (!viewerPanZoom) return;
   viewerPanZoom.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
-  updateSliderPosition(); // Re-calcular el recorte de la capa superior tras mover o hacer zoom
+  updateSliderPosition();
 }
 
 function updateSliderPosition() {
-  if (!imgOriginal) return;
+  if (!imgOriginal || !compareHandle || !compareViewer || !imgResultAfter)
+    return;
 
-  // Colocar el handle de comparación en porcentaje relativo de pantalla (estático)
   compareHandle.style.left = sliderPercent + "%";
 
   const viewerW = compareViewer.clientWidth;
   const screenX = (sliderPercent / 100) * viewerW;
-
-  // Mapear la coordenada X de la pantalla a la coordenada local sobre la imagen (zoom y pan)
   const localX = (screenX - panX) / scale;
 
-  // Calcular porcentaje de recorte relativo al ancho nativo de la imagen
   const imgW = imgOriginal.naturalWidth;
   let localPercent = (localX / imgW) * 100;
 
-  // Aplicar el clip-path en la capa superior (after)
   imgResultAfter.style.clipPath = `inset(0 0 0 ${localPercent}%)`;
 }
 
-// MODAL DE CONFIRMACIÓN PERSONALIZADO
+// ──────────────────────────────────────────────────────────────────────────────
+// MODAL DE CONFIRMACIÓN PERSONALIZADO (PROMISES)
+// ──────────────────────────────────────────────────────────────────────────────
+
 function showCustomConfirm(message) {
   return new Promise((resolve) => {
     const modal = document.getElementById("confirm-modal");
     const text = document.getElementById("confirm-modal-text");
     const btnCancel = document.getElementById("confirm-cancel");
     const btnAccept = document.getElementById("confirm-accept");
+
+    if (!modal || !text || !btnCancel || !btnAccept) {
+      resolve(confirm(message));
+      return;
+    }
 
     text.innerText = message;
     modal.style.display = "flex";
