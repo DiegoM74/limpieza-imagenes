@@ -29,17 +29,25 @@ Limpieza y restauración de portadas de novelas ligeras eliminando las zonas de 
 
 ### 2. Algoritmo de Alineación (Homografía)
 
-- Dado que SIFT no está disponible por defecto en compilaciones estándar de OpenCV.js, se implementa **ORB** (Oriented FAST and Rotated BRIEF).
+- Dado que SIFT no está disponible por defecto en compilaciones estándar de OpenCV.js, se implementa **ORB** (Oriented FAST and Rotated BRIEF) configurado con hasta 10,000 puntos clave (`new cv.ORB(10000)`) para asegurar suficiente densidad de características en portadas de alta resolución.
+- **Procesamiento Asíncrono en Tiempo Real**: La ejecución de `processImages` es asíncrona (`async/await`) liberando el hilo principal del navegador mediante pequeñas pausas (`yieldToUI`), lo que permite renderizar el log de la consola y su desplazamiento en tiempo real.
+- **Interruptores Beta de Alineación**:
+  - `param-homography`: Permite deformar la perspectiva de la imagen limpia generada por IA para encajar los puntos clave con la portada original.
+  - `param-mask-priority`: Procesa la máscara al inicio para dilatar una **Zona de Contexto** multi-región alrededor de todas las zonas blancas de la máscara (sin importar cuántos bloques de texto estén repartidos por la imagen). Filtra y prioriza únicamente los puntos clave (ORB) cercanos a dichas zonas para calcular la Homografía con la máxima exactitud donde ocurrirá el reemplazo.
+  - `param-fallback-direct`: Controla el fallback a **Matriz de Alineación Directa (1:1 / Escalado)** cuando se detecta imprecisión o baja cantidad de puntos. Desactivado por defecto para garantizar que imágenes de IA con diferencias de zoom o encuadre siempre usen la Homografía calculada sin forzar sobreposiciones 1:1 rígidas.
 - **Proceso**:
-  1.  Conversión de la Portada Original y la Imagen Limpia a escala de grises (`cv.COLOR_RGBA2GRAY`).
-  2.  Detección de puntos clave y descriptores con `cv.ORB`.
-  3.  Coincidencia con `cv.BFMatcher` usando distancia de Hamming (`cv.NORM_HAMMING`).
-  4.  Filtrado de matches mediante el Test de Razón de Lowe (límite `0.75`).
-  5.  Cálculo de la matriz homográfica con `cv.findHomography` usando el método `cv.RANSAC` (umbral de descarte `5.0`).
-  6.  Transformación de perspectiva de la limpia con `cv.warpPerspective` usando interpolación lineal (`cv.INTER_LINEAR`).
+  1.  Carga inicial de la Máscara y generación de la **Zona de Contexto dilata** (`cv.dilate`).
+  2.  Conversión de la Portada Original y la Imagen Limpia a escala de grises (`cv.COLOR_RGBA2GRAY`).
+  3.  Detección de puntos clave y descriptores con `cv.ORB(10000)`.
+  4.  Coincidencia con `cv.BFMatcher` usando distancia de Hamming (`cv.NORM_HAMMING`).
+  5.  Filtrado de matches mediante el Test de Razón de Lowe (límite `0.80`) y clasificación según su proximidad a la Zona de Contexto de la Máscara.
+  6.  Cálculo de la matriz homográfica focalizada con `cv.findHomography` usando `cv.RANSAC` (umbral de descarte `5.0`) sobre los puntos cercanos a las máscaras.
+  7.  Validación de inliers ($\ge 4$) y aplicación de la homografía $H$. Si `param-fallback-direct` está desactivado (por defecto), la homografía calculada se aplica obligatoriamente para preservar los encuadres de IA. Si la opción de fallback está activada por el usuario y la homografía falla, se permite la sustitución directa 1:1.
+  8.  Transformación de perspectiva de la limpia con `cv.warpPerspective` usando interpolación lineal (`cv.INTER_LINEAR`).
 
 ### 3. Métodos de Ajuste de Color (Color Match)
 
+- Los modos **Ajuste General** (`color-match`) y **Ajuste Local** (`color-match-local`) son mutuamente exclusivos en la interfaz.
 - **Estadísticas (Stats)**: Coincidencia del valor de media y desviación estándar canal por canal en espacio de color RGB.
 - **Reinhard**: Igual que Stats pero mapeando los canales en el espacio de color perceptual Lab (`cv.COLOR_RGB2Lab` y vuelta).
 - **LUT (Histogram Matching)**: Mapeo de histogramas mediante igualación de la función de distribución acumulada (CDF) de los canales calculada vía `cv.calcHist` y aplicada con `cv.LUT`.
@@ -72,3 +80,9 @@ Limpieza y restauración de portadas de novelas ligeras eliminando las zonas de 
 
 - El manejador `#compare-handle` es hijo de `.compare-viewer` (estático), manteniéndose siempre visible en pantalla sin importar el zoom del lienzo.
 - Al cambiar el zoom, el paneo, o arrastrar el deslizador, se actualiza el porcentaje de recorte local convirtiendo el porcentaje de pantalla estático a coordenadas locales del lienzo usando la transformación activa, aplicando un `clip-path: inset(0 0 0 localPercent%)` a la capa superior.
+
+### 7. Guía Integrada de Parámetros
+
+- **Iconos de Información (`.btn-info-icon`)**: Botones SVG vectoriales `(i)` ubicados junto a cada opción en la sección de parámetros de `index.html`.
+- **Modal Interactivo (`#guide-modal`)**: Presenta tarjetas detalladas para cada parámetro de la aplicación, desglosando la descripción corta, pros, contras, advertencias y recomendaciones de uso para guiar a usuarios casuales.
+- **Navegación Focalizada (`setupParameterGuide`)**: Hacer clic en el icono de información de cualquier opción abre la guía e inmediatamente resalta y desplaza la vista suavemente hacia la tarjeta explicativa correspondiente.

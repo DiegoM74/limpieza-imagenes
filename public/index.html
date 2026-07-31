@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Cover Editor - Limpiador de Portadas</title>
+    <title>Limpiador de Ilustraciones</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -11,6 +11,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="style.css" />
+    <link rel="icon" href="favicon.ico" type="image/x-icon" />
   </head>
   <body>
     <!-- Pantalla de Carga de OpenCV.js -->
@@ -28,7 +29,7 @@
     <!-- Contenedor Principal -->
     <div class="main-container">
       <header>
-        <h1>Cover Editor Web</h1>
+        <h1>Limpiador de Ilustraciones Web</h1>
         <p class="subtitle">
           Limpieza de texto en portadas de novelas ligeras mediante alineación y
           máscaras
@@ -50,7 +51,7 @@
             <div class="dz-message">
               <span class="icon">
                 <svg class="svg-icon">
-                  <use href="/icons.svg#icon-cover"></use>
+                  <use href="icons.svg#icon-cover"></use>
                 </svg>
               </span>
               <h3>Portada Original</h3>
@@ -64,7 +65,7 @@
               style="display: none"
             >
               <svg class="svg-icon-sm">
-                <use href="/icons.svg#icon-trash"></use>
+                <use href="icons.svg#icon-trash"></use>
               </svg>
             </button>
           </div>
@@ -80,7 +81,7 @@
             <div class="dz-message">
               <span class="icon">
                 <svg class="svg-icon">
-                  <use href="/icons.svg#icon-clean"></use>
+                  <use href="icons.svg#icon-clean"></use>
                 </svg>
               </span>
               <h3>Imagen Limpia (Sin Texto)</h3>
@@ -94,7 +95,7 @@
               style="display: none"
             >
               <svg class="svg-icon-sm">
-                <use href="/icons.svg#icon-trash"></use>
+                <use href="icons.svg#icon-trash"></use>
               </svg>
             </button>
           </div>
@@ -110,7 +111,7 @@
             <div class="dz-message">
               <span class="icon">
                 <svg class="svg-icon">
-                  <use href="/icons.svg#icon-mask"></use>
+                  <use href="icons.svg#icon-mask"></use>
                 </svg>
               </span>
               <h3>Máscara PNG</h3>
@@ -133,7 +134,7 @@
               style="display: none"
             >
               <svg class="svg-icon-sm">
-                <use href="/icons.svg#icon-brush"></use>
+                <use href="icons.svg#icon-brush"></use>
               </svg>
             </button>
             <button
@@ -143,7 +144,7 @@
               style="display: none"
             >
               <svg class="svg-icon-sm">
-                <use href="/icons.svg#icon-trash"></use>
+                <use href="icons.svg#icon-trash"></use>
               </svg>
             </button>
           </div>
@@ -152,7 +153,19 @@
 
       <!-- Sección de Parámetros -->
       <section class="section card">
-        <h2 class="section-title">2. Parámetros de Procesamiento</h2>
+        <div class="section-title-row">
+          <h2 class="section-title">2. Parámetros de Procesamiento</h2>
+          <button
+            type="button"
+            id="btn-open-guide"
+            class="btn btn-secondary btn-sm"
+          >
+            <svg class="svg-icon-sm" style="margin-right: 4px">
+              <use href="icons.svg#icon-info"></use>
+            </svg>
+            Guía de Opciones (?)
+          </button>
+        </div>
         <div class="parameters-grid">
           <!-- Ajuste de Color -->
           <div class="param-group">
@@ -163,6 +176,16 @@
                 <span class="checkmark"></span>
                 Ajustar Color General (Color Match)
               </label>
+              <button
+                type="button"
+                class="btn-info-icon"
+                data-guide-target="guide-color-match"
+                title="Ver pros, contras y detalles"
+              >
+                <svg class="svg-icon-xs">
+                  <use href="icons.svg#icon-info"></use>
+                </svg>
+              </button>
             </div>
             <div class="control-row">
               <label class="checkbox-container">
@@ -170,6 +193,16 @@
                 <span class="checkmark"></span>
                 Ajustar Color Local (Dentro de Máscara)
               </label>
+              <button
+                type="button"
+                class="btn-info-icon"
+                data-guide-target="guide-color-local"
+                title="Ver pros, contras y detalles"
+              >
+                <svg class="svg-icon-xs">
+                  <use href="icons.svg#icon-info"></use>
+                </svg>
+              </button>
             </div>
             <div class="control-row">
               <label for="param-method">Método de Ajuste:</label>
@@ -178,6 +211,16 @@
                 <option value="reinhard">Reinhard (Espacio Lab)</option>
                 <option value="lut">LUT (Histogram Matching)</option>
               </select>
+              <button
+                type="button"
+                class="btn-info-icon"
+                data-guide-target="guide-method"
+                title="Ver pros, contras y detalles"
+              >
+                <svg class="svg-icon-xs">
+                  <use href="icons.svg#icon-info"></use>
+                </svg>
+              </button>
             </div>
             <div class="control-row">
               <label for="param-dilate">Dilación de Contexto (px):</label>
@@ -191,12 +234,73 @@
                 />
                 <span class="slider-value" id="val-dilate">20</span>
               </div>
+              <button
+                type="button"
+                class="btn-info-icon"
+                data-guide-target="guide-dilate"
+                title="Ver pros, contras y detalles"
+              >
+                <svg class="svg-icon-xs">
+                  <use href="icons.svg#icon-info"></use>
+                </svg>
+              </button>
             </div>
           </div>
 
-          <!-- Fusión y Difuminado -->
+          <!-- Fusión y Alineación -->
           <div class="param-group">
-            <h3>Bordes y Difuminado</h3>
+            <h3>Alineación y Bordes</h3>
+            <div class="control-row">
+              <label class="checkbox-container">
+                <input type="checkbox" id="param-homography" checked />
+                <span class="checkmark"></span>
+                Deformación por Homografía (Alinear IA - Beta)
+              </label>
+              <button
+                type="button"
+                class="btn-info-icon"
+                data-guide-target="guide-homography"
+                title="Ver pros, contras y detalles"
+              >
+                <svg class="svg-icon-xs">
+                  <use href="icons.svg#icon-info"></use>
+                </svg>
+              </button>
+            </div>
+            <div class="control-row">
+              <label class="checkbox-container">
+                <input type="checkbox" id="param-mask-priority" checked />
+                <span class="checkmark"></span>
+                Priorizar Puntos Cercanos a Máscara (Beta)
+              </label>
+              <button
+                type="button"
+                class="btn-info-icon"
+                data-guide-target="guide-mask-priority"
+                title="Ver pros, contras y detalles"
+              >
+                <svg class="svg-icon-xs">
+                  <use href="icons.svg#icon-info"></use>
+                </svg>
+              </button>
+            </div>
+            <div class="control-row">
+              <label class="checkbox-container">
+                <input type="checkbox" id="param-fallback-direct" />
+                <span class="checkmark"></span>
+                Permitir Fallback a Alineación Directa (1:1)
+              </label>
+              <button
+                type="button"
+                class="btn-info-icon"
+                data-guide-target="guide-fallback-direct"
+                title="Ver pros, contras y detalles"
+              >
+                <svg class="svg-icon-xs">
+                  <use href="icons.svg#icon-info"></use>
+                </svg>
+              </button>
+            </div>
             <div class="control-row">
               <label for="param-blur">Difuminado del Borde (Blur px):</label>
               <div class="slider-val-container">
@@ -210,6 +314,16 @@
                 />
                 <span class="slider-value" id="val-blur">4</span>
               </div>
+              <button
+                type="button"
+                class="btn-info-icon"
+                data-guide-target="guide-blur"
+                title="Ver pros, contras y detalles"
+              >
+                <svg class="svg-icon-xs">
+                  <use href="icons.svg#icon-info"></use>
+                </svg>
+              </button>
             </div>
           </div>
 
@@ -292,7 +406,7 @@
             class="btn btn-secondary btn-sm"
           >
             <svg class="svg-icon-sm" style="margin-right: 4px">
-              <use href="/icons.svg#icon-reset"></use>
+              <use href="icons.svg#icon-reset"></use>
             </svg>
             Restablecer Vista
           </button>
@@ -302,7 +416,7 @@
             download="portada_limpia.jpg"
           >
             <svg class="svg-icon-sm" style="margin-right: 6px">
-              <use href="/icons.svg#icon-download"></use>
+              <use href="icons.svg#icon-download"></use>
             </svg>
             Descargar Resultado
           </a>
@@ -314,7 +428,7 @@
               class="svg-icon-sm"
               style="margin-right: 4px; vertical-align: middle"
             >
-              <use href="/icons.svg#icon-info"></use>
+              <use href="icons.svg#icon-info"></use>
             </svg>
             Usa la rueda del mouse para hacer <strong>Zoom</strong> y arrastra
             con el clic izquierdo para mover la imagen. Arrastra la barra
@@ -363,7 +477,7 @@
                 class="btn btn-primary btn-sm active"
               >
                 <svg class="svg-icon-sm" style="margin-right: 4px">
-                  <use href="/icons.svg#icon-brush"></use>
+                  <use href="icons.svg#icon-brush"></use>
                 </svg>
                 Pincel
               </button>
@@ -373,7 +487,7 @@
                 class="btn btn-secondary btn-sm"
               >
                 <svg class="svg-icon-sm" style="margin-right: 4px">
-                  <use href="/icons.svg#icon-eraser"></use>
+                  <use href="icons.svg#icon-eraser"></use>
                 </svg>
                 Borrador
               </button>
@@ -383,7 +497,7 @@
                 class="btn btn-secondary btn-sm"
               >
                 <svg class="svg-icon-sm" style="margin-right: 4px">
-                  <use href="/icons.svg#icon-pan"></use>
+                  <use href="icons.svg#icon-pan"></use>
                 </svg>
                 Mover
               </button>
@@ -393,7 +507,7 @@
                 class="btn btn-danger btn-sm"
               >
                 <svg class="svg-icon-sm" style="margin-right: 4px">
-                  <use href="/icons.svg#icon-trash"></use>
+                  <use href="icons.svg#icon-trash"></use>
                 </svg>
                 Limpiar Todo
               </button>
@@ -469,6 +583,226 @@
           </button>
           <button type="button" id="confirm-accept" class="btn btn-danger">
             Borrar Todo
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: Guía de Parámetros -->
+    <div id="guide-modal" class="modal">
+      <div class="modal-content guide-modal-content">
+        <div class="modal-header">
+          <h2>Guía Completa de Opciones y Parámetros</h2>
+          <span class="close-modal" id="guide-modal-close">&times;</span>
+        </div>
+        <div class="modal-body guide-modal-body">
+          <p class="modal-tip">
+            Haz clic en los detalles para entender pros, contras y usos
+            recomendados de cada opción.
+          </p>
+
+          <div class="guide-cards-container">
+            <!-- Categoría 1: Ajustes de Color -->
+            <div class="guide-category">
+              <h3 class="guide-category-title">Ajuste y Corrección de Color</h3>
+
+              <!-- Card Unificada: Color Match General vs Local -->
+              <div class="guide-card" id="guide-color-match">
+                <div class="guide-card-header">
+                  <h3>Modos de Ajuste de Color (General vs. Local)</h3>
+                  <span class="badge badge-recommended">Seleccionar uno</span>
+                </div>
+                <p class="guide-desc">
+                  Determina el área de referencia donde se analiza y corrige el
+                  color. Son opciones complementarias y mutuamente exclusivas.
+                </p>
+
+                <div class="guide-subgroup-container">
+                  <div class="guide-subcard" id="guide-color-match-sub">
+                    <div class="guide-subcard-title">
+                      <strong>1. Ajuste General (Color Match)</strong>
+                      <span class="badge badge-recommended">Por defecto</span>
+                    </div>
+                    <p class="guide-desc">
+                      Iguala la media y desviación estándar de color de toda la
+                      imagen limpia para coincidir con la portada original.
+                    </p>
+                    <div class="guide-tags">
+                      <div class="tag tag-pro">
+                        <strong>Pros:</strong> Corrige diferencias globales de
+                        brillo o tonalidad (más fría/cálida) causadas por la IA.
+                      </div>
+                      <div class="tag tag-con">
+                        <strong>Contras:</strong> En ilustraciones con fondos
+                        muy heterogéneos, puede alterar tonos fuera del texto.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="guide-subcard-divider"></div>
+
+                  <div class="guide-subcard" id="guide-color-local">
+                    <div class="guide-subcard-title">
+                      <strong>2. Ajuste Local (Dentro de Máscara)</strong>
+                    </div>
+                    <p class="guide-desc">
+                      Toma como referencia los píxeles del anillo adyacente al
+                      texto y aplica la corrección exclusivamente dentro de la
+                      máscara.
+                    </p>
+                    <div class="guide-tags">
+                      <div class="tag tag-pro">
+                        <strong>Pros:</strong> Preserva el 100% del arte
+                        original fuera del texto y fusiona el parche sobre el
+                        fondo inmediato.
+                      </div>
+                      <div class="tag tag-con">
+                        <strong>Contras:</strong> Requiere que el contorno del
+                        texto tenga píxeles sanos suficientes de muestra.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Card: Métodos de Ajuste -->
+              <div class="guide-card" id="guide-method">
+                <div class="guide-card-header">
+                  <h3>Método de Ajuste de Color (Stats, Reinhard, LUT)</h3>
+                </div>
+                <ul class="guide-list">
+                  <li>
+                    <strong>Estadísticas (Stats - RGB):</strong> Ajuste lineal
+                    rápido canal por canal. (Rápido, ideal para diferencias
+                    levemente uniformes).
+                  </li>
+                  <li>
+                    <strong>Reinhard (Espacio Lab):</strong> Ajuste en espacio
+                    perceptual Lab. (Separa brillo y color, evita quemar pieles
+                    o degradados).
+                  </li>
+                  <li>
+                    <strong>LUT (Histogram Matching):</strong> Igualación no
+                    lineal de la curva de histogramas. (Ideal cuando la IA
+                    alteró contraste o curvas de sombra).
+                  </li>
+                </ul>
+              </div>
+
+              <!-- Card: Dilación de Contexto -->
+              <div class="guide-card" id="guide-dilate">
+                <div class="guide-card-header">
+                  <h3>Dilación de Contexto (px)</h3>
+                </div>
+                <p class="guide-desc">
+                  Ancho en píxeles del anillo exterior alrededor del texto usado
+                  como muestra de referencia (Default: <code>20px</code>).
+                </p>
+                <div class="guide-tags">
+                  <div class="tag tag-pro">
+                    <strong>Recomendación:</strong> Aumentar (30-50px) para
+                    degradados amplios; reducir si hay otros dibujos pegados al
+                    texto.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Categoría 2: Alineación y Geometría -->
+            <div class="guide-category">
+              <h3 class="guide-category-title">
+                Alineación y Geometría por Homografía (IA)
+              </h3>
+
+              <!-- Card: Deformación por Homografía -->
+              <div class="guide-card" id="guide-homography">
+                <div class="guide-card-header">
+                  <h3>Deformación por Homografía (Alinear IA - Beta)</h3>
+                  <span class="badge badge-recommended"
+                    >Recomendado para IA</span
+                  >
+                </div>
+                <p class="guide-desc">
+                  Aplica una transformación proyectiva de perspectiva 3x3
+                  calculada mediante RANSAC sobre puntos clave ORB.
+                </p>
+                <div class="guide-tags">
+                  <div class="tag tag-pro">
+                    <strong>Pros:</strong> Encaja automáticamente cambios de
+                    zoom, escala o leve distorsión espacial creados por la IA.
+                  </div>
+                  <div class="tag tag-con">
+                    <strong>Contras:</strong> Desactivar solo si usas imágenes
+                    idénticas superpuestas 1:1.
+                  </div>
+                </div>
+              </div>
+
+              <!-- Card: Priorizar Puntos Cercanos a Máscara -->
+              <div class="guide-card" id="guide-mask-priority">
+                <div class="guide-card-header">
+                  <h3>Priorizar Puntos Cercanos a Máscara (Beta)</h3>
+                  <span class="badge badge-recommended">Recomendado</span>
+                </div>
+                <p class="guide-desc">
+                  Filtra y prioriza los puntos de interés ORB ubicados en el
+                  área cercana a todas las regiones de la máscara.
+                </p>
+                <div class="guide-tags">
+                  <div class="tag tag-pro">
+                    <strong>Pros:</strong> Asegura precisión milimétrica de
+                    alineación exactamente en las zonas donde se sustituirá el
+                    texto.
+                  </div>
+                </div>
+              </div>
+
+              <!-- Card: Permitir Fallback a Alineación Directa -->
+              <div class="guide-card" id="guide-fallback-direct">
+                <div class="guide-card-header">
+                  <h3>Permitir Fallback a Alineación Directa (1:1)</h3>
+                </div>
+                <p class="guide-desc">
+                  Permite sobreposición directa 1:1 sin perspectiva si la
+                  homografía detecta pocos puntos (Default: Desactivado).
+                </p>
+                <div class="guide-tags">
+                  <div class="tag tag-con">
+                    <strong>Advertencia:</strong> Mantener desmarcado al usar
+                    imágenes de IA, ya que el 1:1 desalineará el parche si hubo
+                    cambios de zoom.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Categoría 3: Suavizado y Bordes -->
+            <div class="guide-category">
+              <h3 class="guide-category-title">Suavizado y Bordes de Fusión</h3>
+
+              <!-- Card: Difuminado del Borde -->
+              <div class="guide-card" id="guide-blur">
+                <div class="guide-card-header">
+                  <h3>Difuminado del Borde (Blur px)</h3>
+                </div>
+                <p class="guide-desc">
+                  Radio de suavizado gaussiano aplicado al contorno de la
+                  máscara para fusión (Default: <code>4px</code>).
+                </p>
+                <div class="guide-tags">
+                  <div class="tag tag-pro">
+                    <strong>Recomendación:</strong> Aumentar (6-10px) si los
+                    bordes del parche se notan marcados; reducir si hay trazos
+                    finos cerca.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="guide-modal-accept" class="btn btn-primary">
+            Entendido
           </button>
         </div>
       </div>

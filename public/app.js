@@ -115,6 +115,7 @@ function updateCursor() {
 window.addEventListener("DOMContentLoaded", () => {
   setupDropzones();
   setupParameters();
+  setupParameterGuide();
   setupMaskEditor();
   setupResultViewer();
 
@@ -309,6 +310,90 @@ function setupParameters() {
     const label = document.getElementById(s.valId);
     slider.addEventListener("input", () => {
       label.innerText = slider.value;
+    });
+  });
+
+  // Exclusividad mutua entre Ajuste de Color General y Local
+  const colorMatch = document.getElementById("param-color-match");
+  const colorLocal = document.getElementById("param-color-local");
+
+  if (colorMatch && colorLocal) {
+    colorMatch.addEventListener("change", () => {
+      if (colorMatch.checked) {
+        colorLocal.checked = false;
+      }
+    });
+    colorLocal.addEventListener("change", () => {
+      if (colorLocal.checked) {
+        colorMatch.checked = false;
+      }
+    });
+  }
+}
+
+function setupParameterGuide() {
+  const modal = document.getElementById("guide-modal");
+  const btnOpenGuide = document.getElementById("btn-open-guide");
+  const btnClose = document.getElementById("guide-modal-close");
+  const btnAccept = document.getElementById("guide-modal-accept");
+  const infoButtons = document.querySelectorAll(".btn-info-icon");
+
+  if (!modal) return;
+
+  function openGuide(targetCardId = null) {
+    modal.style.display = "flex";
+
+    // Quitar resaltados previos
+    document.querySelectorAll(".guide-card, .guide-subcard").forEach((card) => {
+      card.classList.remove("guide-card-highlight");
+    });
+
+    if (targetCardId) {
+      const targetCard = document.getElementById(targetCardId);
+      if (targetCard) {
+        targetCard.classList.add("guide-card-highlight");
+        // Si es una sub-tarjeta, también podemos resaltar suavemente la tarjeta padre
+        const parentCard = targetCard.closest(".guide-card");
+        if (parentCard && parentCard !== targetCard) {
+          parentCard.classList.add("guide-card-highlight");
+        }
+        setTimeout(() => {
+          targetCard.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 100);
+      }
+    }
+  }
+
+  function closeGuide() {
+    modal.style.display = "none";
+  }
+
+  if (btnOpenGuide) {
+    btnOpenGuide.addEventListener("click", () => openGuide());
+  }
+
+  if (btnClose) btnClose.addEventListener("click", closeGuide);
+  if (btnAccept) btnAccept.addEventListener("click", closeGuide);
+
+  // Cerrar al hacer clic fuera del contenido de la modal
+  window.addEventListener("click", (e) => {
+    if (e.target === modal) {
+      closeGuide();
+    }
+  });
+
+  // Cerrar con la tecla ESC
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && modal.style.display === "flex") {
+      closeGuide();
+    }
+  });
+
+  infoButtons.forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const targetId = btn.getAttribute("data-guide-target");
+      openGuide(targetId);
     });
   });
 }
@@ -879,11 +964,15 @@ function stopDrawing() {
   isDrawing = false;
 }
 
+function yieldToUI() {
+  return new Promise((resolve) => setTimeout(resolve, 25));
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // PROCESAMIENTO CON OPENCV.JS
 // ──────────────────────────────────────────────────────────────────────────────
 
-function processImages() {
+async function processImages() {
   if (!openCvLoaded) {
     alert("Abriendo OpenCV.js, espera que cargue.");
     return;
@@ -891,10 +980,20 @@ function processImages() {
 
   clearLog();
   log("Iniciando procesamiento de limpieza...", "info");
+  await yieldToUI();
 
   // Obtener parámetros
   const colorMatch = document.getElementById("param-color-match").checked;
   const colorMatchLocal = document.getElementById("param-color-local").checked;
+  const enableHomography = document.getElementById("param-homography")
+    ? document.getElementById("param-homography").checked
+    : true;
+  const enableMaskPriority = document.getElementById("param-mask-priority")
+    ? document.getElementById("param-mask-priority").checked
+    : true;
+  const enableFallbackDirect = document.getElementById("param-fallback-direct")
+    ? document.getElementById("param-fallback-direct").checked
+    : false;
   const method = document.getElementById("param-method").value;
   const dilatePx = parseInt(document.getElementById("param-dilate").value);
   const blurSigma = parseFloat(document.getElementById("param-blur").value);
@@ -905,9 +1004,13 @@ function processImages() {
   let srcMask = null;
   let grayCover = new cv.Mat();
   let grayClean = new cv.Mat();
+  let maskGray = new cv.Mat();
+  let maskContext = new cv.Mat();
 
   try {
-    log("Cargando imágenes en memoria...", "info");
+    log("Cargando imágenes y máscara en memoria...", "info");
+    await yieldToUI();
+
     srcCover = cv.imread(imgOriginal);
     srcClean = cv.imread(imgClean);
     srcMask = cv.imread(imgMask);
@@ -915,8 +1018,42 @@ function processImages() {
     cv.cvtColor(srcCover, grayCover, cv.COLOR_RGBA2GRAY);
     cv.cvtColor(srcClean, grayClean, cv.COLOR_RGBA2GRAY);
 
+    // Procesar la Máscara al inicio para filtrado de contexto por cercanía
+    let dsize = new cv.Size(srcCover.cols, srcCover.rows);
+    if (srcMask.channels() === 4) {
+      let channels = new cv.MatVector();
+      cv.split(srcMask, channels);
+      maskGray = channels.get(3).clone();
+      let meanVal = cv.mean(maskGray)[0];
+      if (meanVal > 250) {
+        cv.cvtColor(srcMask, maskGray, cv.COLOR_RGBA2GRAY);
+      }
+      for (let i = 0; i < channels.size(); i++) channels.get(i).delete();
+      channels.delete();
+    } else if (srcMask.channels() === 3) {
+      cv.cvtColor(srcMask, maskGray, cv.COLOR_RGB2GRAY);
+    } else {
+      maskGray = srcMask.clone();
+    }
+
+    if (maskGray.cols !== srcCover.cols || maskGray.rows !== srcCover.rows) {
+      let resizedMask = new cv.Mat();
+      cv.resize(maskGray, resizedMask, dsize, 0, 0, cv.INTER_LINEAR);
+      maskGray.delete();
+      maskGray = resizedMask;
+    }
+
+    // Crear Zona de Contexto dilata (radio amplio alrededor de todas las zonas de texto)
+    let kernelRadius = Math.max(15, Math.round(srcCover.cols / 40));
+    let kernelSize = kernelRadius * 2 + 1;
+    let kernel = cv.Mat.ones(kernelSize, kernelSize, cv.CV_8U);
+    cv.dilate(maskGray, maskContext, kernel);
+    kernel.delete();
+
     log("Detectando puntos de interés (ORB)...", "info");
-    let orb = new cv.ORB();
+    await yieldToUI();
+
+    let orb = new cv.ORB(10000);
     let kpCover = new cv.KeyPointVector();
     let desCover = new cv.Mat();
     let kpClean = new cv.KeyPointVector();
@@ -929,58 +1066,214 @@ function processImages() {
       `Puntos clave - Original: ${kpCover.size()} | Limpia: ${kpClean.size()}`,
       "info",
     );
+    await yieldToUI();
 
-    if (kpCover.size() < 4 || kpClean.size() < 4) {
-      throw new Error(
-        "Pocos puntos de interés detectados. Comprueba la calidad de las imágenes.",
-      );
-    }
-
-    log("Buscando coincidencias de puntos...", "info");
+    let H = null;
     let matcher = new cv.BFMatcher(cv.NORM_HAMMING);
     let matches = new cv.DMatchVectorVector();
-    matcher.knnMatch(desClean, desCover, matches, 2);
+    let allMatches = new cv.DMatchVector();
+    let maskMatches = new cv.DMatchVector();
+    let ptsClean = null;
+    let ptsCover = null;
 
-    let goodMatches = new cv.DMatchVector();
-    for (let i = 0; i < matches.size(); i++) {
-      let matchPair = matches.get(i);
-      if (matchPair.size() < 2) continue;
-      let m = matchPair.get(0);
-      let n = matchPair.get(1);
-      if (m.distance < 0.75 * n.distance) {
-        goodMatches.push_back(m);
+    if (
+      kpCover.size() >= 4 &&
+      kpClean.size() >= 4 &&
+      !desCover.empty() &&
+      !desClean.empty()
+    ) {
+      log("Buscando coincidencias de puntos...", "info");
+      await yieldToUI();
+
+      matcher.knnMatch(desClean, desCover, matches, 2);
+
+      for (let i = 0; i < matches.size(); i++) {
+        let matchPair = matches.get(i);
+        if (matchPair.size() < 2) continue;
+        let m = matchPair.get(0);
+        let n = matchPair.get(1);
+        if (m.distance < 0.8 * n.distance) {
+          allMatches.push_back(m);
+
+          // Filtrar puntos que están cerca de cualquier zona de la máscara
+          let ptCover = kpCover.get(m.trainIdx).pt;
+          let cx = Math.floor(ptCover.x);
+          let cy = Math.floor(ptCover.y);
+          if (
+            cx >= 0 &&
+            cx < maskContext.cols &&
+            cy >= 0 &&
+            cy < maskContext.rows
+          ) {
+            if (maskContext.ucharPtr(cy, cx)[0] > 0) {
+              maskMatches.push_back(m);
+            }
+          }
+        }
+      }
+
+      let targetMatches = allMatches;
+      let isMaskFocused = false;
+
+      if (enableMaskPriority && maskMatches.size() >= 4) {
+        targetMatches = maskMatches;
+        isMaskFocused = true;
+        log(
+          `Coincidencias priorizadas cerca de la máscara: ${maskMatches.size()} (de ${allMatches.size()} totales)`,
+          "info",
+        );
+      } else {
+        log(`Coincidencias válidas encontradas: ${allMatches.size()}`, "info");
+      }
+      await yieldToUI();
+
+      if (targetMatches.size() >= 4 && enableHomography) {
+        log(
+          `Calculando homografía ${isMaskFocused ? "focalizada en máscara " : ""}por RANSAC...`,
+          "info",
+        );
+        await yieldToUI();
+
+        ptsClean = new cv.Mat(targetMatches.size(), 1, cv.CV_32FC2);
+        ptsCover = new cv.Mat(targetMatches.size(), 1, cv.CV_32FC2);
+
+        for (let i = 0; i < targetMatches.size(); i++) {
+          let m = targetMatches.get(i);
+          let ptClean = kpClean.get(m.queryIdx).pt;
+          let ptCover = kpCover.get(m.trainIdx).pt;
+
+          ptsClean.data32F[i * 2] = ptClean.x;
+          ptsClean.data32F[i * 2 + 1] = ptClean.y;
+
+          ptsCover.data32F[i * 2] = ptCover.x;
+          ptsCover.data32F[i * 2 + 1] = ptCover.y;
+        }
+
+        let inlierMask = new cv.Mat();
+        let H_candidate = cv.findHomography(
+          ptsClean,
+          ptsCover,
+          cv.RANSAC,
+          5.0,
+          inlierMask,
+        );
+        let inliersCount = cv.countNonZero(inlierMask);
+
+        log(`Inliers tras RANSAC: ${inliersCount}`, "info");
+        await yieldToUI();
+
+        let isValidH = false;
+        if (
+          !H_candidate.empty() &&
+          H_candidate.rows === 3 &&
+          H_candidate.cols === 3 &&
+          inliersCount >= 4
+        ) {
+          let h22 = H_candidate.data64F[8];
+          if (Math.abs(h22) > 1e-7) {
+            let h00 = H_candidate.data64F[0] / h22;
+            let h01 = H_candidate.data64F[1] / h22;
+            let h10 = H_candidate.data64F[3] / h22;
+            let h11 = H_candidate.data64F[4] / h22;
+            let h20 = H_candidate.data64F[6] / h22;
+            let h21 = H_candidate.data64F[7] / h22;
+
+            let det2x2 = h00 * h11 - h01 * h10;
+            if (
+              det2x2 > 0.1 &&
+              det2x2 < 10.0 &&
+              Math.abs(h20) < 0.05 &&
+              Math.abs(h21) < 0.05
+            ) {
+              isValidH = true;
+            }
+          }
+        }
+
+        if (isValidH) {
+          H = H_candidate;
+          log(
+            `Alineación por Homografía aplicada con éxito (${inliersCount} inliers).`,
+            "success",
+          );
+        } else if (enableFallbackDirect) {
+          if (H_candidate) H_candidate.delete();
+          log(
+            `[!] Homografía inestable. Usando alineación directa 1:1 por opción activada.`,
+            "info",
+          );
+        } else {
+          // Si el fallback 1:1 está desactivado por defecto, forzamos usar H_candidate
+          H = H_candidate;
+          log(
+            `[*] Homografía aplicada (${inliersCount} inliers, fallback 1:1 desactivado).`,
+            "info",
+          );
+        }
+        inlierMask.delete();
+      } else if (!enableHomography) {
+        if (enableFallbackDirect) {
+          log(
+            "Homografía desactivada. Usando alineación directa (1:1).",
+            "info",
+          );
+        } else {
+          throw new Error(
+            "Homografía desactivada y Fallback a Alineación Directa (1:1) no permitido.",
+          );
+        }
+      } else {
+        if (enableFallbackDirect) {
+          log(
+            "[!] Pocas coincidencias. Usando alineación directa (1:1).",
+            "info",
+          );
+        } else {
+          throw new Error(
+            `Pocas coincidencias de alineación (${targetMatches.size()}). Habilita 'Permitir Fallback a Alineación Directa (1:1)' si deseas forzar la alineación.`,
+          );
+        }
+      }
+    } else {
+      if (enableFallbackDirect) {
+        log(
+          "[!] Puntos clave insuficientes. Usando alineación directa (1:1).",
+          "info",
+        );
+      } else {
+        throw new Error(
+          "Puntos clave insuficientes en las imágenes para alinear.",
+        );
       }
     }
+    await yieldToUI();
 
-    log(`Coincidencias válidas encontradas: ${goodMatches.size()}`, "info");
+    // Matriz de identidad / escalado si se permitió el fallback directo 1:1
+    if (!H && enableFallbackDirect) {
+      H = new cv.Mat(3, 3, cv.CV_64F);
+      let sx = srcCover.cols / srcClean.cols;
+      let sy = srcCover.rows / srcClean.rows;
+      H.data64F[0] = sx;
+      H.data64F[1] = 0;
+      H.data64F[2] = 0;
+      H.data64F[3] = 0;
+      H.data64F[4] = sy;
+      H.data64F[5] = 0;
+      H.data64F[6] = 0;
+      H.data64F[7] = 0;
+      H.data64F[8] = 1;
+    }
 
-    if (goodMatches.size() < 4) {
+    if (!H) {
       throw new Error(
-        "No se encontraron suficientes coincidencias para alinear las imágenes.",
+        "No se pudo calcular la matriz de alineación por homografía.",
       );
     }
 
-    log("Calculando matriz de alineación homográfica (RANSAC)...", "info");
-    let ptsClean = new cv.Mat(goodMatches.size(), 1, cv.CV_32FC2);
-    let ptsCover = new cv.Mat(goodMatches.size(), 1, cv.CV_32FC2);
-
-    for (let i = 0; i < goodMatches.size(); i++) {
-      let m = goodMatches.get(i);
-      let ptClean = kpClean.get(m.queryIdx).pt;
-      let ptCover = kpCover.get(m.trainIdx).pt;
-
-      ptsClean.data32F[i * 2] = ptClean.x;
-      ptsClean.data32F[i * 2 + 1] = ptClean.y;
-
-      ptsCover.data32F[i * 2] = ptCover.x;
-      ptsCover.data32F[i * 2 + 1] = ptCover.y;
-    }
-
-    let H = cv.findHomography(ptsClean, ptsCover, cv.RANSAC, 5.0);
-
     log("Alineando perspectiva de la imagen limpia...", "info");
+    await yieldToUI();
+
     let alignedClean = new cv.Mat();
-    let dsize = new cv.Size(srcCover.cols, srcCover.rows);
     cv.warpPerspective(
       srcClean,
       alignedClean,
@@ -991,43 +1284,15 @@ function processImages() {
       new cv.Scalar(0, 0, 0, 0),
     );
 
-    // Procesar la Máscara
-    log("Procesando máscara de entrada...", "info");
-    let maskGray = new cv.Mat();
-    if (srcMask.channels() === 4) {
-      // Si tiene canal alpha (RGBA), extraemos el alpha para la máscara
-      let channels = new cv.MatVector();
-      cv.split(srcMask, channels);
-      maskGray = channels.get(3).clone();
-
-      // Si la máscara está vacía (todo blanco/opaco), usamos el color como fallback
-      let meanVal = cv.mean(maskGray)[0];
-      if (meanVal > 250) {
-        cv.cvtColor(srcMask, maskGray, cv.COLOR_RGBA2GRAY);
-      }
-
-      for (let i = 0; i < channels.size(); i++) channels.get(i).delete();
-      channels.delete();
-    } else if (srcMask.channels() === 3) {
-      cv.cvtColor(srcMask, maskGray, cv.COLOR_RGB2GRAY);
-    } else {
-      maskGray = srcMask.clone();
-    }
-
-    // Redimensionar máscara al tamaño original si difieren
-    if (maskGray.cols !== srcCover.cols || maskGray.rows !== srcCover.rows) {
-      let resizedMask = new cv.Mat();
-      cv.resize(maskGray, resizedMask, dsize, 0, 0, cv.INTER_LINEAR);
-      maskGray.delete();
-      maskGray = resizedMask;
-    }
-
     // Ajuste de Color (Color Match)
     let colorMatchedClean = alignedClean.clone();
-    if (colorMatch) {
-      log(`Aplicando ajuste de color (Método: ${method})...`, "info");
+    if (colorMatch || colorMatchLocal) {
+      log(
+        `Aplicando ajuste de color (Método: ${method}${colorMatchLocal ? " - Local" : ""})...`,
+        "info",
+      );
+      await yieldToUI();
 
-      // Generar anillo de contexto si hay dilación
       let contextMask = null;
       if (dilatePx > 0) {
         let kernel = cv.Mat.ones(dilatePx * 2 + 1, dilatePx * 2 + 1, cv.CV_8U);
@@ -1058,9 +1323,9 @@ function processImages() {
             "info",
           );
         }
+        await yieldToUI();
       }
 
-      // Realizar el ajuste
       let corrected = null;
       if (method === "reinhard") {
         corrected = matchColorReinhard(alignedClean, srcCover, contextMask);
@@ -1071,12 +1336,9 @@ function processImages() {
       }
 
       if (colorMatchLocal) {
-        // Modo local: el ajuste se aplica SOLO dentro de la máscara original
-        // El resto del fondo de la limpia conserva sus colores originales
         corrected.copyTo(colorMatchedClean, maskGray);
         corrected.delete();
       } else {
-        // Modo global: el ajuste se aplica a toda la imagen limpia alineada
         colorMatchedClean.delete();
         colorMatchedClean = corrected;
       }
@@ -1086,6 +1348,8 @@ function processImages() {
 
     // Difuminar la máscara para fusión suave de bordes
     log("Difuminando bordes de fusión (GaussianBlur)...", "info");
+    await yieldToUI();
+
     let blurredMask = new cv.Mat();
     if (blurSigma > 0) {
       let ksize = new cv.Size(0, 0);
@@ -1096,6 +1360,8 @@ function processImages() {
 
     // Mezclar las imágenes pixel a pixel usando JS de alta velocidad
     log("Mezclando imágenes finales...", "info");
+    await yieldToUI();
+
     let coverData = srcCover.data;
     let cleanData = colorMatchedClean.data;
     let maskData = blurredMask.data;
@@ -1140,10 +1406,13 @@ function processImages() {
     desCover.delete();
     kpClean.delete();
     desClean.delete();
+    matcher.delete();
     matches.delete();
-    goodMatches.delete();
-    ptsClean.delete();
-    ptsCover.delete();
+    allMatches.delete();
+    maskMatches.delete();
+    maskContext.delete();
+    if (ptsClean) ptsClean.delete();
+    if (ptsCover) ptsCover.delete();
     H.delete();
     alignedClean.delete();
     maskGray.delete();
