@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Escalador Waifu2x por Lotes</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <!-- Importamos estilos base del proyecto y luego los específicos -->
+    <link rel="stylesheet" href="../style.css" />
+    <link rel="stylesheet" href="style.css" />
+    <link rel="icon" href="../favicon.ico" type="image/x-icon" />
+  </head>
+  <body>
+    <!-- Pantalla de Carga de OpenCV.js -->
+    <div id="loading-overlay" class="overlay">
+      <div class="loader-content">
+        <div class="spinner"></div>
+        <h2>Cargando OpenCV.js</h2>
+        <p>
+          Por favor espera un momento mientras se inicializa el motor en
+          WebAssembly...
+        </p>
+      </div>
+    </div>
+
+    <div class="main-container">
+      <header>
+        <h1>Escalador Waifu2x por Lotes</h1>
+        <p class="subtitle">
+          Súper-resolución mediante IA (Waifu2x) con reescalado exacto a resolución objetivo
+        </p>
+      </header>
+
+      <!-- 1. Entrada de imágenes -->
+      <section class="section card">
+        <h2 class="section-title">1. Cargar Imágenes</h2>
+        <div class="dropzones-container">
+          <div class="dropzone" id="dz-multiple">
+            <input
+              type="file"
+              id="input-images"
+              accept="image/*"
+              class="file-input"
+              multiple
+            />
+            <div class="dz-message">
+              <span class="icon">
+                <svg class="svg-icon dz-icon-multiple">
+                  <use href="../icons.svg#icon-clean"></use>
+                </svg>
+              </span>
+              <h3>Arrastra aquí tus imágenes</h3>
+              <p>O haz clic para seleccionar (soporta lotes)</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Parámetros -->
+      <section class="section card">
+        <div class="section-title-row">
+          <h2 class="section-title">2. Parámetros de Procesamiento</h2>
+          <button
+            type="button"
+            id="btn-open-guide"
+            class="btn btn-secondary btn-sm btn-with-icon"
+          >
+            <svg class="svg-icon-sm">
+              <use href="../icons.svg#icon-info"></use>
+            </svg>
+            Guía de Opciones (?)
+          </button>
+        </div>
+
+        <div class="parameters-grid">
+          <!-- Parámetro Nuevo: Resolución Deseada -->
+          <div class="param-group">
+            <h3>Resolución Objetivo</h3>
+            <div class="control-row">
+              <label for="param-target-res">Dimensión deseada (píxeles):</label>
+              <div class="target-res-container">
+                <input type="number" id="param-target-res" value="1400" min="100" max="10000" class="target-res-input" />
+                <span>px</span>
+                <button
+                  type="button"
+                  class="btn-info-icon"
+                  data-guide-target="guide-target-res"
+                  title="Detalles de Resolución"
+                >
+                  <svg class="svg-icon-xs">
+                    <use href="../icons.svg#icon-info"></use>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Waifu2x -->
+          <div class="param-group">
+            <div class="group-header">
+              <h3>Optimización Waifu2x</h3>
+              <span class="badge badge-info" id="waifu2x-backend-badge"
+                >Acelerado por IA</span
+              >
+            </div>
+            
+            <div class="control-row">
+              <label for="param-waifu2x-scale">Aumento de resolución:</label>
+              <select id="param-waifu2x-scale">
+                <option value="none">Ninguno (1x)</option>
+                <option value="2x" selected>2x (Recomendado)</option>
+                <option value="4x">4x</option>
+              </select>
+              <button
+                type="button"
+                class="btn-info-icon"
+                data-guide-target="guide-waifu2x-scale"
+              >
+                <svg class="svg-icon-xs"><use href="../icons.svg#icon-info"></use></svg>
+              </button>
+            </div>
+            <div class="control-row">
+              <label for="param-waifu2x-noise">Reducción de Ruido:</label>
+              <select id="param-waifu2x-noise">
+                <option value="none">Ninguno</option>
+                <option value="1">Nivel 1</option>
+                <option value="2" selected>Nivel 2 (Recomendado)</option>
+                <option value="3">Nivel 3</option>
+              </select>
+              <button
+                type="button"
+                class="btn-info-icon"
+                data-guide-target="guide-waifu2x-noise"
+              >
+                <svg class="svg-icon-xs"><use href="../icons.svg#icon-info"></use></svg>
+              </button>
+            </div>
+            <div class="control-row">
+              <label for="param-waifu2x-model">Modelo Waifu2x:</label>
+              <select id="param-waifu2x-model">
+                <option value="cunet" selected>models-cunet (Ilustraciones)</option>
+                <option value="upconv">models-upconv_7_anime</option>
+              </select>
+              <button
+                type="button"
+                class="btn-info-icon"
+                data-guide-target="guide-waifu2x-model"
+              >
+                <svg class="svg-icon-xs"><use href="../icons.svg#icon-info"></use></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="console-output" class="console-box hidden"></div>
+        <div id="summary-output" class="summary-box hidden">
+            <!-- Se inyecta con JS -->
+        </div>
+
+        <!-- Acciones -->
+        <div class="action-container">
+          <button type="button" id="btn-process" class="btn btn-primary btn-large" disabled>
+            Procesar Imágenes
+          </button>
+          <button type="button" id="btn-download" class="btn btn-success btn-large" disabled>
+            Descargar
+          </button>
+        </div>
+      </section>
+
+      <!-- 3. Lista de resultados -->
+      <section class="section card">
+        <div class="section-title-row">
+          <h2 class="section-title">3. Imágenes</h2>
+          <button type="button" id="btn-clear-all" class="btn btn-secondary btn-sm" disabled>
+            Eliminar todas
+          </button>
+        </div>
+        <div id="results-list" class="results-grid">
+           <!-- Items renderizados via JS -->
+           <p class="empty-results">No hay imágenes cargadas.</p>
+        </div>
+      </section>
+    </div>
+
+    <!-- MODAL COMPARADOR A PANTALLA COMPLETA -->
+    <div id="compare-modal" class="modal">
+      <div class="modal-content compare-modal-content">
+        <div class="modal-header">
+          <h2 id="compare-title">Comparación</h2>
+          <span class="close-modal" id="compare-modal-close">&times;</span>
+        </div>
+        <div class="modal-body compare-modal-body">
+            <div class="compare-viewer-outer compare-viewer-outer-full">
+              <div class="compare-viewer" id="compare-viewer">
+                <div class="viewer-pan-zoom" id="viewer-pan-zoom">
+                  <img id="img-result-before" src="" alt="Original" />
+                  <img id="img-result-after" src="" alt="Resultado" />
+                </div>
+                <div class="compare-handle" id="compare-handle">
+                  <div class="handle-line"></div>
+                  <div class="handle-button">↔</div>
+                </div>
+                <div class="compare-label compare-label-left">
+                  <span class="label-title">Original</span><br/>
+                  <span id="compare-info-before"></span>
+                </div>
+                <div class="compare-label compare-label-right">
+                  <span class="label-title">Procesada</span><br/>
+                  <span id="compare-info-after"></span>
+                </div>
+              </div>
+            </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: Guía de Parámetros -->
+    <div id="guide-modal" class="modal">
+      <div class="modal-content guide-modal-content">
+        <div class="modal-header">
+          <h2>Guía de Opciones</h2>
+          <span class="close-modal" id="guide-modal-close">&times;</span>
+        </div>
+        <div class="modal-body guide-modal-body">
+          <div class="guide-cards-container">
+            <div class="guide-category">
+              <h3 class="guide-category-title">Ajustes Generales</h3>
+              <div class="guide-card" id="guide-target-res">
+                <div class="guide-card-header">
+                  <h3>Resolución Objetivo</h3>
+                </div>
+                <p class="guide-desc">
+                  Define el tamaño final deseado. El motor calculará dinámicamente:
+                </p>
+                <ul class="guide-list">
+                  <li><strong>Verticales:</strong> Se asegura que el <strong>ancho</strong> alcance el valor especificado.</li>
+                  <li><strong>Horizontales:</strong> Se asegura que el <strong>alto</strong> alcance el valor especificado.</li>
+                </ul>
+                <div class="guide-tags">
+                    <div class="tag tag-pro">
+                      <strong>Proceso:</strong> Si el upscale de Waifu2x supera esta meta, la imagen se encogerá con un filtro Lanczos para coincidir exactamente.
+                    </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Heredado de Waifu2x -->
+            <div class="guide-category">
+                <h3 class="guide-category-title">Parámetros Waifu2x</h3>
+                <div class="guide-card" id="guide-waifu2x-scale">
+                  <div class="guide-card-header"><h3>Aumento de resolución</h3></div>
+                  <ul class="guide-list"><li><strong>2x / 4x:</strong> Multiplicador base antes del ajuste final.</li></ul>
+                </div>
+                <div class="guide-card" id="guide-waifu2x-noise">
+                  <div class="guide-card-header"><h3>Reducción de Ruido</h3></div>
+                  <ul class="guide-list"><li>Niveles 1-3 para eliminar artefactos y pixelado.</li></ul>
+                </div>
+                <div class="guide-card" id="guide-waifu2x-model">
+                  <div class="guide-card-header"><h3>Modelo Waifu2x</h3></div>
+                  <ul class="guide-list"><li><strong>models-cunet:</strong> Recomendado para ilustraciones limpias y exactas.</li></ul>
+                </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="guide-modal-accept" class="btn btn-primary">Entendido</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- JSZip para empaquetar descargas -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <!-- ONNX Runtime Web con soporte nativo WebGPU y WASM -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.webgpu.min.js"></script>
+    <script src="../waifu2x-engine.js?v=1.1.2"></script>
+    
+    <!-- OpenCV.js asíncrono para downscale de alta calidad -->
+    <script
+      async
+      src="https://docs.opencv.org/4.x/opencv.js"
+      onload="onOpenCvReady()"
+      onerror="onOpenCvError()"
+    ></script>
+    
+    <script src="app.js?v=1.0"></script>
+  </body>
+</html>

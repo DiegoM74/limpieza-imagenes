@@ -42,7 +42,7 @@ window.Waifu2xEngine = (function () {
   /**
    * Genera las posibles rutas locales y URLs CDN del modelo ONNX según los parámetros.
    */
-  function getModelUrls(modelType, noiseLevel, scaleFactor) {
+  function getModelUrls(modelType, noiseLevel, scaleFactor, basePath = "") {
     const prefix = modelType === "upconv" ? "upconv_7" : "cunet";
     const noise =
       noiseLevel === "none" || noiseLevel === "0" ? "0" : noiseLevel;
@@ -55,10 +55,10 @@ window.Waifu2xEngine = (function () {
     }
 
     return [
-      `models/waifu2x/onnx_models/${prefix}/art/${fileName}`,
-      `models/waifu2x/${prefix}/art/${fileName}`,
-      `models/waifu2x/${prefix}_${fileName}`,
-      `models/waifu2x/${fileName}`,
+      `${basePath}models/waifu2x/onnx_models/${prefix}/art/${fileName}`,
+      `${basePath}models/waifu2x/${prefix}/art/${fileName}`,
+      `${basePath}models/waifu2x/${prefix}_${fileName}`,
+      `${basePath}models/waifu2x/${fileName}`,
       `https://raw.githubusercontent.com/nagadomi/nunif/master/waifu2x/onnx_models/${prefix}/art/${fileName}`,
     ];
   }
@@ -71,6 +71,7 @@ window.Waifu2xEngine = (function () {
     noiseLevel,
     scaleFactor,
     logCallback,
+    basePath = ""
   ) {
     const key = `${modelType}_${noiseLevel}_${scaleFactor}`;
     if (sessionCache[key]) {
@@ -98,7 +99,7 @@ window.Waifu2xEngine = (function () {
       }
     }
 
-    const candidates = getModelUrls(modelType, noiseLevel, scaleFactor);
+    const candidates = getModelUrls(modelType, noiseLevel, scaleFactor, basePath);
     let session = null;
     let lastError = null;
 
@@ -168,6 +169,7 @@ window.Waifu2xEngine = (function () {
     const requestedScale = options.scale || "2x";
     const tileSize = options.tileSize || 256;
     const overlap = options.overlap || 16;
+    const basePath = options.modelBasePath || "";
     const margin = 14; // Margen convolucional U-Net CUnet
 
     // Normalizar fuente de entrada a un HTMLCanvasElement
@@ -232,6 +234,7 @@ window.Waifu2xEngine = (function () {
         (msg) => {
           if (progressCallback) progressCallback(0, msg);
         },
+        basePath
       );
 
       const outputCanvas = document.createElement("canvas");
