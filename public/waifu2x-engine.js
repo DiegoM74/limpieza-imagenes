@@ -326,7 +326,7 @@ window.Waifu2xEngine = (function () {
               numPasses > 1 ? ` Pasada ${pass}/${numPasses}: ` : " ";
             progressCallback(
               percent,
-              `Waifu2x Real${passMsg}Procesando tesela ${completedTiles}/${totalTiles} (${percent}%)...`,
+              `Waifu2x ${passMsg}Procesando tesela ${completedTiles}/${totalTiles} (${percent}%)...`,
             );
           }
 
